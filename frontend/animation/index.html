@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DROIN Intro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --cream: #F7F4ED;
+    --ink: #2C1D17;
+    --orange: #F2953B;
+    --orange-dark: #C8702C;
+    --gray: #858078;
+    --panel: #F8E4CB;
+    --face: #F7E3C8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--cream); font-family: Manrope, system-ui, sans-serif; color: var(--ink); overflow: hidden; }
+  #stage { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: calc(100% - 80px); display: block; }
+  @media (max-width: 800px) { #stage { height: calc(100% - 130px); } }
+  .controls {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
+    border: 1px solid rgba(44,29,23,.08); border-radius: 14px; padding: 8px 12px;
+    width: min(780px, calc(100vw - 32px));
+  }
+  .controls button {
+    font: 700 13px Manrope, system-ui, sans-serif; color: var(--ink);
+    background: #fff; border: 1px solid rgba(44,29,23,.14); border-radius: 12px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  }
+  .controls select, .controls a {
+    font: 700 13px Manrope, system-ui, sans-serif; color: var(--ink);
+    background: #fff; border: 1px solid rgba(44,29,23,.14); border-radius: 12px;
+    padding: 7px 8px; cursor: pointer; white-space: nowrap; text-decoration: none;
+  }
+  .controls a { padding: 7px 12px; }
+  .controls button:hover, .controls select:hover, .controls a:hover { border-color: var(--orange); }
+  .controls button.on { background: var(--orange); border-color: var(--orange); color: #fff; }
+  .controls select:focus-visible, .controls button:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+  .controls input[type=range] { flex: 1 1 140px; min-width: 60px; accent-color: var(--orange); }
+  .controls .time { font: 500 12px Manrope, system-ui, sans-serif; color: var(--gray); width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<svg id="stage" viewBox="35 10 1200 800" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="bodyClip"><path id="bodySilClip" /></clipPath>
+    <clipPath id="coinClip" clipPathUnits="userSpaceOnUse"><path id="coinClipPath" /></clipPath>
+    <linearGradient id="trayDepth" x1="0" y1="0" x2=".55" y2="1">
+      <stop offset="0" stop-color="#1E120D" />
+      <stop offset="1" stop-color="#7A5038" />
+    </linearGradient>
+  </defs>
+
+  <!-- ground shadow under the falling coin -->
+  <ellipse id="coinShadow" cx="695" cy="508" rx="95" ry="12" fill="var(--ink)" opacity="0" />
+
+  <!-- drawer: back half (body + pulled-out tray) -->
+  <g id="drawerBack">
+    <ellipse cx="-40" cy="138" rx="215" ry="16" fill="var(--ink)" opacity=".1" />
+    <g clip-path="url(#bodyClip)">
+      <path id="bodyTop" fill="var(--orange)" />
+      <path id="bodyLeft" fill="var(--orange-dark)" />
+      <path id="bodyFront" fill="var(--ink)" />
+    </g>
+    <path id="bodySil" fill="none" stroke="var(--ink)" stroke-width="14" stroke-linejoin="round" />
+    <g id="tray">
+      <path id="trayLeft" fill="var(--orange-dark)" stroke="var(--ink)" stroke-width="12" stroke-linejoin="round" />
+      <path id="trayOpen" fill="url(#trayDepth)" stroke="var(--ink)" stroke-width="12" stroke-linejoin="round" />
+    </g>
+  </g>
+
+  <!-- letters live under the O so they appear to come out of it -->
+  <g id="letters" fill="none" stroke="var(--ink)" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path data-cx="238" d="M162,318 V462 H236 C292,462 314,428 314,390 C314,352 292,318 236,318 Z" />
+    <g data-cx="462"><path d="M397,462 V318 H468 C508,318 528,342 528,368 C528,394 508,414 468,414 H397" /><path d="M472,416 L526,462" /></g>
+    <path data-cx="855" d="M855,318 V462" />
+    <path data-cx="1028" d="M952,462 V318 L1104,462 V318" />
+  </g>
+
+  <!-- the O / coin -->
+  <g clip-path="url(#coinClip)">
+    <g id="coin">
+      <ellipse id="coinEdge" cy="0" ry="112" fill="var(--orange)" />
+      <rect id="coinEdgeRect" y="-112" height="224" fill="var(--orange)" />
+      <ellipse id="coinDisk" cx="0" cy="0" ry="112" fill="var(--ink)" />
+      <g id="coinFeatures">
+        <circle id="coinRing" r="84" fill="none" stroke="var(--face)" stroke-width="8" />
+        <g id="coinEyes">
+          <ellipse cx="-48" cy="-16" rx="15" ry="15" fill="var(--face)" />
+          <ellipse cx="46" cy="-16" rx="15" ry="15" fill="var(--face)" />
+        </g>
+        <path id="coinSmile" d="M-27,18 Q-1,54 27,18" fill="none" stroke="var(--face)" stroke-width="20" stroke-linecap="round" />
+      </g>
+    </g>
+  </g>
+  <g id="coinSparks" stroke="var(--orange)" stroke-width="26" stroke-linecap="round">
+    <line id="osp1" x1="738" y1="240" x2="714" y2="196" />
+    <line id="osp2" x1="790" y1="250" x2="823" y2="190" />
+  </g>
+
+  <!-- drawer: front panel (drawn over the coin so the coin drops "inside") -->
+  <g id="drawerFront">
+    <g id="panel">
+      <g id="panelExtrude"></g>
+      <path id="panelHighlight" fill="#FFF3E2" />
+      <g transform="matrix(1,-0.2126,0,1,0,0)">
+        <rect x="-150" y="-95" width="300" height="190" rx="38" fill="var(--panel)" stroke="var(--ink)" stroke-width="14" />
+        <g id="dEyes" fill="var(--ink)">
+          <circle cx="-68" cy="4" r="13" />
+          <circle cx="68" cy="4" r="13" />
+        </g>
+        <g id="dHappy" fill="none" stroke="var(--ink)" stroke-width="11" stroke-linecap="round">
+          <path d="M-84,10 Q-68,-10 -52,10" />
+          <path d="M52,10 Q68,-10 84,10" />
+        </g>
+        <path id="dSmile" d="M-22,24 Q0,48 22,24" fill="none" stroke="var(--ink)" stroke-width="11" stroke-linecap="round" />
+        <ellipse id="dMouth" cx="0" cy="34" rx="11" ry="14" fill="var(--ink)" />
+      </g>
+    </g>
+    <g stroke="var(--orange)" stroke-width="22" stroke-linecap="round">
+      <line id="dsp1" x1="168" y1="-168" x2="160" y2="-222" />
+      <line id="dsp2" x1="196" y1="-152" x2="236" y2="-196" />
+    </g>
+  </g>
+
+  <text id="tagline" x="635" y="760" text-anchor="middle" font-family="Manrope, system-ui, sans-serif" font-weight="700" font-size="34" fill="var(--ink)" opacity="0">Your money, in its place.</text>
+</svg>
+
+<div class="controls">
+  <button id="replay">Replay</button>
+  <button id="play">Pause</button>
+  <button id="loop" aria-pressed="false" title="Loop (L)">⟳ Loop</button>
+  <select id="speed" aria-label="Playback speed">
+    <option value="0.25">0.25× slowest</option>
+    <option value="0.5">0.5×</option>
+    <option value="0.75">0.75×</option>
+    <option value="1" selected>1× normal</option>
+    <option value="1.5">1.5×</option>
+    <option value="2">2×</option>
+    <option value="3">3× fastest</option>
+  </select>
+  <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Timeline" />
+  <span class="time" id="time">0.0s</span>
+  <a href="/pageno">Pageno →</a>
+</div>
+
+<script>
+// ---------- tiny keyframe engine ----------
+const E = {
+  linear: p => p,
+  step: p => (p < 1 ? 0 : 1),
+  in2: p => p * p,
+  out2: p => 1 - (1 - p) * (1 - p),
+  in3: p => p * p * p,
+  out3: p => 1 - Math.pow(1 - p, 3),
+  inout: p => (p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2),
+  outBack: p => { const c = 1.9, c3 = c + 1; return 1 + c3 * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); },
+  outBackSoft: p => { const c = 1.1, c3 = c + 1; return 1 + c3 * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); },
+  inBack: p => { const c = 1.6; return (c + 1) * p * p * p - c * p * p; },
+};
+const tracks = new Map();
+function K(obj, prop, keys) {
+  const id = obj; if (!tracks.has(id)) tracks.set(id, {});
+  const t = tracks.get(id);
+  (t[prop] ||= []).push(...keys.map(([time, v, ease]) => ({ time, v, ease: ease || 'inout' })));
+  t[prop].sort((a, b) => a.time - b.time);
+}
+function sample(keys, time) {
+  if (time <= keys[0].time) return keys[0].v;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const a = keys[i], b = keys[i + 1];
+    if (time < b.time) {
+      const p = (time - a.time) / (b.time - a.time);
+      return a.v + (b.v - a.v) * E[b.ease](p);
+    }
+  }
+  return keys[keys.length - 1].v;
+}
+function applyAt(time) {
+  for (const [obj, props] of tracks) for (const p in props) obj[p] = sample(props[p], time);
+}
+
+// ---------- scene state ----------
+const OX = 695, OY = 390, R = 112, TAU = Math.PI * 2;
+const coin = { x: OX, y: -180, s: 1, sx: 1, sy: 1, spin: 0, ring: 1, face: 0, smile: 0, ex: 0, ey: 0, o: 1, shadow: 1, gy: OY + R, sp1: 0, sp2: 0 };
+const drawer = { x: 690, y: 1150, sx: 1, sy: 1, k: 0, lx: 0, ly: 0, mouth: 0, happy: 0, sp1: 0, sp2: 0 };
+const tag = { o: 0, y: 20 };
+const letterEls = [...document.querySelectorAll('#letters > *')];
+const letters = letterEls.map(el => ({ el, cx: +el.dataset.cx, dx: 0, s: 1, o: 0 }));
+const [L_D, L_R, L_I, L_N] = letters;
+
+// ---------- timeline ----------
+// 1. coin falls in, spinning, and bounces
+K(coin, 'y', [[0, -180], [1.15, OY, 'in2'], [1.42, 345, 'out2'], [1.68, OY, 'in2'], [1.8, 378, 'out2'], [1.92, OY, 'in2']]);
+K(coin, 'spin', [[0, 0], [1.6, 3 * TAU, 'out2']]);
+K(coin, 'sy', [[1.15, 1], [1.22, .78, 'out2'], [1.4, 1.06, 'out2'], [1.6, 1], [1.68, 1], [1.74, .92, 'out2'], [1.9, 1]]);
+K(coin, 'sx', [[1.15, 1], [1.22, 1.16, 'out2'], [1.4, .96, 'out2'], [1.6, 1], [1.68, 1], [1.74, 1.06, 'out2'], [1.9, 1]]);
+K(coin, 'ring', [[0, 1], [1.9, 1], [2.2, 0]]);
+
+// 2. the O wakes up and smiles
+K(coin, 'face', [[2.0, 0], [2.25, 1, 'outBack'], [2.6, 1], [2.66, .1], [2.74, 1]]);
+K(coin, 'smile', [[2.15, 0], [2.5, 1, 'out2']]);
+
+// 3. looks left -> D R pop out; looks right -> I N pop out
+K(coin, 'ex', [[2.8, 0], [2.95, -14, 'out2'], [3.7, -14], [3.85, 14], [4.6, 14], [4.75, 0]]);
+function popOut(L, t) {
+  K(L, 'o', [[t - .01, 0], [t, 1, 'step']]);
+  K(L, 'dx', [[t, OX - L.cx], [t + .5, 0, 'outBack']]);
+  K(L, 's', [[t, .2], [t + .5, 1, 'outBack']]);
+}
+function nudge(t) { // little push each time a letter squeezes out
+  K(coin, 'sx', [[t, 1], [t + .08, .92, 'out2'], [t + .28, 1, 'outBack']]);
+  K(coin, 'sy', [[t, 1], [t + .08, 1.06, 'out2'], [t + .28, 1, 'outBack']]);
+}
+popOut(L_R, 3.0); popOut(L_D, 3.14); nudge(3.0);
+popOut(L_I, 3.9); popOut(L_N, 4.04); nudge(3.9);
+K(coin, 'sp1', [[4.75, 0], [5.0, 1, 'outBack'], [6.0, 1], [6.2, 0, 'in2']]);
+K(coin, 'sp2', [[4.85, 0], [5.1, 1, 'outBack'], [6.0, 1], [6.2, 0, 'in2']]);
+K(coin, 'face', [[5.3, 1], [5.36, .1], [5.44, 1]]);
+
+// 4. DR and IN get pulled back into the O, which gulps them down
+function suckIn(L, t) {
+  K(L, 'dx', [[t, 0], [t + .4, OX - L.cx, 'inBack']]);
+  K(L, 's', [[t, 1], [t + .4, .2, 'in2']]);
+  K(L, 'o', [[t + .4, 1], [t + .41, 0, 'step']]);
+}
+suckIn(L_D, 5.9); suckIn(L_N, 5.9); suckIn(L_R, 5.98); suckIn(L_I, 5.98);
+K(coin, 'face', [[6.3, 1], [6.36, .15], [6.62, .15], [6.72, 1]]);
+K(coin, 'sy', [[6.34, 1], [6.42, 1.12, 'out2'], [6.56, .9], [6.72, 1, 'outBack']]);
+K(coin, 'sx', [[6.34, 1], [6.42, .9, 'out2'], [6.56, 1.08], [6.72, 1, 'outBack']]);
+
+// 5. the O crouches and jumps high; the drawer pops up and opens underneath it
+K(coin, 'face', [[6.8, 1], [6.88, .5], [6.98, 1]]);              // determined squint
+K(coin, 'sy', [[6.78, 1], [6.95, .72, 'out2'], [7.03, 1.2, 'out2'], [7.2, 1]]);
+K(coin, 'sx', [[6.78, 1], [6.95, 1.28, 'out2'], [7.03, .8, 'out2'], [7.2, 1]]);
+K(coin, 'x', [[6.95, OX], [7.65, 716, 'out2']]);
+K(coin, 'y', [[6.95, OY], [7.65, 110, 'out2'], [8.25, 600, 'in2']]);
+K(coin, 's', [[6.95, 1], [7.65, .42, 'out2']]);
+K(coin, 'spin', [[6.95, 3 * TAU], [8.25, 5 * TAU]]);
+K(coin, 'shadow', [[6.95, 1], [7.2, 0]]);
+K(coin, 'ey', [[7.6, 0], [7.8, 12, 'out2']]);                    // looks down at the drawer
+K(drawer, 'y', [[7.0, 1150], [7.6, 540, 'outBackSoft']]);
+K(drawer, 'lx', [[7.5, 0], [7.7, 4, 'out2'], [8.0, 4], [8.25, 0], [8.6, 0]]);
+K(drawer, 'ly', [[7.5, 0], [7.7, -14, 'out2'], [8.0, -14], [8.25, 4], [8.6, 0]]);
+K(drawer, 'mouth', [[7.55, 0], [7.75, 1, 'outBack'], [8.3, 1], [8.45, 0]]);
+
+// 6. the O falls straight into the open drawer, drawer shuts happily
+K(drawer, 'k', [[7.55, 0], [7.9, 1, 'outBackSoft'], [8.3, 1], [8.55, 0, 'in3']]);
+K(coin, 'o', [[8.28, 1], [8.29, 0, 'step']]);
+K(drawer, 'sy', [[8.15, 1], [8.25, .93, 'out2'], [8.39, 1.03], [8.53, 1], [8.55, 1], [8.62, .9, 'out2'], [8.85, 1, 'outBack']]);
+K(drawer, 'sx', [[8.55, 1], [8.62, 1.07, 'out2'], [8.85, 1, 'outBack']]);
+K(drawer, 'happy', [[8.6, 0], [8.72, 1, 'out2']]);
+K(drawer, 'sp1', [[8.7, 0], [8.95, 1, 'outBack']]);
+K(drawer, 'sp2', [[8.8, 0], [9.05, 1, 'outBack']]);
+K(tag, 'o', [[9.2, 0], [9.8, 1]]);
+K(tag, 'y', [[9.2, 20], [9.8, 0, 'out2']]);
+const DURATION = 10.3;
+
+// ---------- drawer geometry (local coords, front panel centred at 0,0) ----------
+const T = -0.2126;                       // skewY(-12deg)
+const sk = (x, y) => [x, y + T * x];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const mul = (a, k) => [a[0] * k, a[1] * k];
+const D = [-110, -80];                   // depth vector (towards the back)
+const PT = mul(D, .2);                   // panel thickness
+const OPEN = [95, 70];                   // how far the drawer slides out
+const F = { TL: sk(-150, -95), TR: sk(150, -95), BL: sk(-150, 95), BR: sk(150, 95) };
+const bf = Object.fromEntries(Object.entries(F).map(([k, p]) => [k, add(p, PT)]));
+const bb = Object.fromEntries(Object.entries(F).map(([k, p]) => [k, add(p, D)]));
+const trayF = { TL: add(sk(-138, -86), PT), TR: add(sk(138, -86), PT), BL: add(sk(-138, 86), PT) };
+
+const poly = pts => 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L') + 'Z';
+function roundPoly(pts, r) {
+  const n = pts.length; let d = '';
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], a = pts[(i + n - 1) % n], b = pts[(i + 1) % n];
+    const la = Math.hypot(a[0] - p[0], a[1] - p[1]), lb = Math.hypot(b[0] - p[0], b[1] - p[1]);
+    const rr = Math.min(r, la / 2, lb / 2);
+    const p1 = [p[0] + (a[0] - p[0]) / la * rr, p[1] + (a[1] - p[1]) / la * rr];
+    const p2 = [p[0] + (b[0] - p[0]) / lb * rr, p[1] + (b[1] - p[1]) / lb * rr];
+    d += (i ? 'L' : 'M') + p1.join(',') + 'Q' + p.join(',') + ' ' + p2.join(',');
+  }
+  return d + 'Z';
+}
+
+const $ = id => document.getElementById(id);
+const sil = roundPoly([bb.TL, bb.TR, bf.TR, bf.BR, bf.BL, bb.BL], 30);
+$('bodySil').setAttribute('d', sil);
+$('bodySilClip').setAttribute('d', sil);
+$('bodyTop').setAttribute('d', poly([bb.TL, bb.TR, bf.TR, bf.TL]));
+$('bodyLeft').setAttribute('d', poly([bb.TL, bf.TL, bf.BL, bb.BL]));
+$('bodyFront').setAttribute('d', poly([bf.TL, bf.TR, bf.BR, bf.BL]));
+
+// panel slab: stack of copies from back to front gives it thickness
+const ex = $('panelExtrude');
+for (const t of [1, .8, .6, .4, .2]) {
+  ex.insertAdjacentHTML('beforeend',
+    `<g transform="translate(${PT[0] * t},${PT[1] * t}) matrix(1,${T},0,1,0,0)"><rect x="-150" y="-95" width="300" height="190" rx="38" fill="var(--ink)" stroke="var(--ink)" stroke-width="14"/></g>`);
+}
+$('panelHighlight').setAttribute('d', poly([sk(-150, -50), sk(-150, 60), add(sk(-150, 60), mul(PT, .75)), add(sk(-150, -50), mul(PT, .75))]));
+
+// ---------- render ----------
+const smileLen = $('coinSmile').getTotalLength();
+$('coinSmile').style.strokeDasharray = smileLen;
+const coinEyes = [...document.querySelectorAll('#coinEyes ellipse')];
+
+function drawerToRoot(p) {
+  return [drawer.x + p[0] * drawer.sx, drawer.y + 127 + (p[1] - 127) * drawer.sy];
+}
+function sparkScale(el, base, k) {
+  el.setAttribute('transform', `translate(${base[0]},${base[1]}) scale(${Math.max(k, 0.0001)}) translate(${-base[0]},${-base[1]})`);
+  el.style.opacity = k > .02 ? 1 : 0;
+}
+
+function render() {
+  // coin
+  const c = Math.cos(coin.spin), sn = Math.sin(coin.spin);
+  $('coin').setAttribute('transform',
+    `translate(${coin.x},${coin.y}) scale(${coin.s}) translate(0,${R}) scale(${coin.sx},${coin.sy}) translate(0,${-R})`);
+  $('coin').style.opacity = coin.o;
+  const rx = R * Math.abs(c), dx = -18 * sn;
+  $('coinDisk').setAttribute('rx', rx);
+  $('coinEdge').setAttribute('rx', rx);
+  $('coinEdge').setAttribute('cx', dx);
+  $('coinEdgeRect').setAttribute('x', Math.min(0, dx));
+  $('coinEdgeRect').setAttribute('width', Math.abs(dx));
+  $('coinFeatures').setAttribute('transform', `scale(${c},1)`);
+  $('coinRing').style.opacity = coin.ring * .3;
+  const showFace = c > 0 ? 1 : 0;
+  $('coinEyes').setAttribute('transform', `translate(${coin.ex},${coin.ey})`);
+  $('coinEyes').style.opacity = showFace;
+  coinEyes.forEach(e => e.setAttribute('ry', Math.max(0, 15 * coin.face)));
+  $('coinSmile').style.strokeDashoffset = smileLen * (1 - coin.smile);
+  $('coinSmile').style.opacity = coin.smile > .01 ? showFace : 0;
+  $('coinSmile').setAttribute('transform', `translate(${coin.ex * .6},${coin.ey * .6})`);
+
+  const near = Math.max(0, 1 - (coin.gy - (coin.y + R * coin.s)) / 520);
+  const sh = $('coinShadow');
+  sh.setAttribute('cx', coin.x);
+  sh.setAttribute('cy', coin.gy + 6);
+  sh.setAttribute('rx', 95 * coin.s * near * coin.sx);
+  sh.setAttribute('ry', 12 * Math.max(coin.s, .6));
+  sh.setAttribute('opacity', .14 * near * coin.shadow);
+
+  sparkScale($('osp1'), [738, 240], coin.sp1);
+  sparkScale($('osp2'), [790, 250], coin.sp2);
+
+  // letters
+  for (const L of letters) {
+    L.el.setAttribute('transform', `translate(${L.cx + L.dx},${OY}) scale(${L.s}) translate(${-L.cx},${-OY})`);
+    L.el.style.opacity = L.o;
+  }
+
+  // drawer
+  const dt = `translate(${drawer.x},${drawer.y + 127}) scale(${drawer.sx},${drawer.sy}) translate(0,-127)`;
+  $('drawerBack').setAttribute('transform', dt);
+  $('drawerFront').setAttribute('transform', dt);
+  const ov = mul(OPEN, drawer.k);
+  $('panel').setAttribute('transform', `translate(${ov[0]},${ov[1]})`);
+  const open = drawer.k > .01;
+  $('tray').style.display = open ? '' : 'none';
+  const tTL2 = add(trayF.TL, ov), tTR2 = add(trayF.TR, ov), tBL2 = add(trayF.BL, ov);
+  if (open) {
+    $('trayLeft').setAttribute('d', poly([trayF.TL, tTL2, tBL2, trayF.BL]));
+    $('trayOpen').setAttribute('d', poly([trayF.TL, trayF.TR, tTR2, tTL2]));
+  }
+  // coin is visible above the tray's back edge, or inside the tray opening
+  const a = drawerToRoot(trayF.TL), b = drawerToRoot(trayF.TR);
+  const slope = (b[1] - a[1]) / (b[0] - a[0]);
+  const yAt = x => a[1] + slope * (x - a[0]);
+  // (everything left of the tray stays visible, so the O can wait beside the drawer)
+  const clip = [[-3000, -3000], [5000, -3000], [5000, yAt(5000)], b,
+    ...(open ? [drawerToRoot(tTR2), drawerToRoot(tTL2)] : []), a, [a[0], 5000], [-3000, 5000]];
+  $('coinClipPath').setAttribute('d', poly(clip));
+
+  $('dEyes').setAttribute('transform', `translate(${drawer.lx},${drawer.ly})`);
+  $('dEyes').style.opacity = 1 - drawer.happy;
+  $('dHappy').style.opacity = drawer.happy;
+  $('dSmile').style.opacity = 1 - drawer.mouth;
+  $('dMouth').setAttribute('transform', `translate(0,34) scale(${Math.max(drawer.mouth, 0.0001)}) translate(0,-34)`);
+  sparkScale($('dsp1'), [168, -168], drawer.sp1);
+  sparkScale($('dsp2'), [196, -152], drawer.sp2);
+
+  const tg = $('tagline');
+  tg.setAttribute('opacity', tag.o);
+  tg.setAttribute('transform', `translate(0,${tag.y})`);
+}
+
+// ---------- playback ----------
+const LOOP_HOLD = 1.2;                    // seconds to rest on the final frame before looping
+let time = 0, playing = true, speed = 1, loop = false, hold = 0, last = performance.now();
+const scrub = $('scrub'), timeEl = $('time'), playBtn = $('play'), loopBtn = $('loop');
+function seek(t) { time = Math.max(0, Math.min(DURATION, t)); applyAt(time); render(); scrub.value = time / DURATION * 1000; timeEl.textContent = time.toFixed(1) + 's'; }
+function frame(now) {
+  const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
+  if (playing) {
+    if (time < DURATION) seek(time + dt * speed);
+    else if (loop) { hold += raw; if (hold >= LOOP_HOLD) { hold = 0; seek(0); } }
+    else { playing = false; playBtn.textContent = 'Play'; }
+  }
+  requestAnimationFrame(frame);
+}
+loopBtn.onclick = () => {
+  loop = !loop; hold = 0;
+  loopBtn.classList.toggle('on', loop);
+  loopBtn.setAttribute('aria-pressed', loop);
+};
+$('replay').onclick = () => { seek(0); playing = true; playBtn.textContent = 'Pause'; };
+playBtn.onclick = () => {
+  if (time >= DURATION) seek(0);
+  playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play';
+};
+$('speed').onchange = e => { speed = +e.target.value; };
+scrub.oninput = () => { playing = false; playBtn.textContent = 'Play'; seek(scrub.value / 1000 * DURATION); };
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
+  if (e.code === 'KeyL') loopBtn.click();
+});
+
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) { seek(DURATION); playing = false; playBtn.textContent = 'Play'; }
+else seek(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

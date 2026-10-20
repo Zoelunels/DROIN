@@ -1,0 +1,42 @@
+# DROIN monorepo: backend/ (Bun + Hono) and frontend/ (Expo app, promo animation, brand assets).
+# backend/.gitignore and frontend/mobile/.gitignore add their own rules on top of these.
+
+# Dependencies
+node_modules/
+
+# Secrets and local settings — commit .env.example, never .env
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Local-only notes, e.g. backend/DEV_ACCOUNTS.local.md (test logins for the dev database)
+*.local.md
+
+# Backup of frontend/mobile's old standalone .git (from before the monorepo); safe to delete
+.backup/
+
+# Backend runtime data (receipt uploads, see UPLOAD_DIR)
+backend/uploads/
+backend/uploads-test/
+
+# Logs (backend-dev.log, frontend-dev.log, …)
+*.log
+logs/
+
+# Expo / build output
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+
+# Rendered promo videos: large generated files (~180 MB); re-render from frontend/animation/*.html
+frontend/animation/renders/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json

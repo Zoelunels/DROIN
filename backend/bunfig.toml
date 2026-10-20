@@ -1,0 +1,3 @@
+[test]
+# Points the app at TEST_DATABASE_URL and runs migrations before any test file loads.
+preload = ["./tests/setup.ts"]

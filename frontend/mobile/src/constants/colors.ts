@@ -1,0 +1,15 @@
+export const Colors = {
+  orange: '#E8A04A',
+  cream: '#F7F4ED',
+  charcoal: '#242321',
+  secondaryGray: '#858078',
+  softPeach: '#FAD7B7',
+  income: '#6F8F72',
+  expense: '#C96A4A',
+  white: '#FFFFFF',
+  background: '#FBFAF7',
+  cardBg: '#FFFFFF',
+  borderLight: '#EADCC8',
+  danger: '#D94C4C',
+  success: '#6F8F72',
+} as const

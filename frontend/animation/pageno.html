@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pageno Intro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #2E2723;
+    --accent: #F4A259;
+    --cream: #F7F4ED;
+    --beige: #EADCC8;
+    --gray: #858078;
+    --bg: #FBFAF7;
+    --cover: #F8F1E6;
+    --page: #FFFBF4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); font-family: Poppins, system-ui, sans-serif; color: var(--ink); overflow: hidden; }
+  #stage { position: fixed; top: 0; left: 0; right: 0; width: 100%; height: calc(100% - 80px); display: block; }
+  @media (max-width: 800px) { #stage { height: calc(100% - 130px); } }
+  .controls {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.7); backdrop-filter: blur(6px);
+    border: 1px solid rgba(46,39,35,.08); border-radius: 14px; padding: 8px 12px;
+    width: min(760px, calc(100vw - 32px));
+  }
+  .controls button, .controls select, .controls a {
+    font: 600 13px Poppins, system-ui, sans-serif; color: var(--ink);
+    background: #fff; border: 1px solid rgba(46,39,35,.14); border-radius: 12px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap; text-decoration: none;
+  }
+  .controls select { padding: 7px 8px; }
+  .controls button:hover, .controls select:hover, .controls a:hover { border-color: var(--accent); }
+  .controls button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .controls select:focus-visible, .controls button:focus-visible, .controls a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .controls input[type=range] { flex: 1 1 140px; min-width: 60px; accent-color: var(--accent); }
+  .controls .time { font: 500 12px Poppins, system-ui, sans-serif; color: var(--gray); width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<svg id="stage" viewBox="0 20 1300 720" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <ellipse id="bookShadow" ry="14" fill="var(--ink)" opacity="0" />
+
+  <!-- the book. local x=0 is the spine; closed it spans x 0..220, y -130..130 -->
+  <g id="book">
+    <rect id="spreadBoard" x="-4" y="-122" width="236" height="268" rx="24" fill="var(--accent)" stroke="var(--ink)" stroke-width="9" />
+    <g id="thick">
+      <rect x="-26" y="-142" width="220" height="260" rx="24" fill="var(--accent)" stroke="var(--ink)" stroke-width="9" />
+      <rect x="-13" y="-136" width="220" height="260" rx="24" fill="var(--page)" stroke="var(--ink)" stroke-width="7" />
+    </g>
+    <rect x="150" y="104" width="28" height="44" rx="5" fill="var(--accent)" stroke="var(--ink)" stroke-width="7" />
+    <rect x="0" y="-127" width="216" height="254" rx="16" fill="var(--page)" stroke="var(--ink)" stroke-width="7" />
+    <g stroke="var(--beige)" stroke-width="6" stroke-linecap="round">
+      <line x1="40" y1="-60" x2="176" y2="-60" /><line x1="40" y1="-24" x2="176" y2="-24" />
+      <line x1="40" y1="12" x2="150" y2="12" /><line x1="40" y1="48" x2="164" y2="48" />
+    </g>
+    <line id="spine" x1="0" y1="-118" x2="0" y2="124" stroke="var(--ink)" stroke-width="6" stroke-linecap="round" />
+    <g id="coverBack"></g>
+    <g id="oSlot"></g>   <!-- the o lives here once it has jumped into the book -->
+    <g id="coverFront">
+      <g id="cover">
+        <rect id="coverBoard" x="0" y="-122" width="232" height="268" rx="24" fill="var(--accent)" stroke="var(--ink)" stroke-width="9" />
+        <rect id="coverRect" x="0" y="-130" width="220" height="260" rx="24" fill="var(--cover)" stroke="var(--ink)" stroke-width="9" />
+        <g id="coverLines" stroke="var(--beige)" stroke-width="6" stroke-linecap="round">
+          <line x1="44" y1="-60" x2="180" y2="-60" /><line x1="44" y1="-24" x2="180" y2="-24" />
+          <line x1="70" y1="12" x2="180" y2="12" /><line x1="56" y1="48" x2="180" y2="48" />
+        </g>
+        <g id="coverFace">
+          <g id="bEyes" fill="var(--ink)">
+            <ellipse class="bEye" cx="80" cy="-4" rx="11" ry="11" />
+            <ellipse class="bEye" cx="146" cy="-4" rx="11" ry="11" />
+          </g>
+          <g id="bSleepy" fill="none" stroke="var(--ink)" stroke-width="6" stroke-linecap="round">
+            <path d="M69,-2 Q80,6 91,-2" /><path d="M135,-2 Q146,6 157,-2" />
+          </g>
+          <g id="bHappy" fill="none" stroke="var(--ink)" stroke-width="6" stroke-linecap="round">
+            <path d="M69,0 Q80,-13 91,0" /><path d="M135,0 Q146,-13 157,0" />
+          </g>
+          <path id="bSmile" d="M98,20 Q113,36 128,20" fill="none" stroke="var(--ink)" stroke-width="8" stroke-linecap="round" />
+        </g>
+      </g>
+    </g>
+    <g stroke="var(--accent)" stroke-width="16" stroke-linecap="round">
+      <line id="bsp1" x1="196" y1="-156" x2="190" y2="-192" />
+      <line id="bsp2" x1="222" y1="-142" x2="250" y2="-168" />
+    </g>
+  </g>
+
+  <!-- little burst when the book opens -->
+  <g id="rays" stroke="var(--accent)" stroke-width="14" stroke-linecap="round"></g>
+
+  <!-- letters p a g e n (stroked, centred on their bowl) -->
+  <g id="letters" fill="none" stroke="var(--ink)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+    <g><circle r="42" /><path d="M-42,-42 V115" /></g>
+    <g><circle r="42" /><path d="M42,-42 V42" /></g>
+    <g><circle r="42" /><path d="M42,-42 V80 C42,124 -20,130 -38,110" /></g>
+    <g><path d="M-36,9 H36" stroke-width="20" /><path d="M41,9 A42,42 0 1,0 29,30" /></g>
+    <g><path d="M-42,-42 V42 M-42,0 A42,42 0 0,1 42,0 V42" /></g>
+  </g>
+
+  <!-- the smiley o -->
+  <g id="oStage">
+    <g id="oLetter">
+      <g id="oBody">
+        <circle r="60" fill="var(--ink)" />
+        <g id="oFace">
+          <ellipse class="oEye" cx="-21" cy="-8" rx="8" ry="8" fill="var(--cream)" />
+          <ellipse class="oEye" cx="21" cy="-8" rx="8" ry="8" fill="var(--cream)" />
+          <path id="oSmile" d="M-15,13 Q0,30 15,13" fill="none" stroke="var(--cream)" stroke-width="8" stroke-linecap="round" />
+        </g>
+      </g>
+    </g>
+  </g>
+  <g stroke="var(--accent)" stroke-width="16" stroke-linecap="round">
+    <line id="osp1" x1="1027" y1="146" x2="1021" y2="108" />
+    <line id="osp2" x1="1051" y1="152" x2="1077" y2="122" />
+  </g>
+
+  <text id="tagline" x="650" y="660" text-anchor="middle" font-family="Poppins, system-ui, sans-serif" font-weight="500" font-size="30" fill="var(--gray)" opacity="0">Your money, one page at a time.</text>
+</svg>
+
+<div class="controls">
+  <button id="replay">Replay</button>
+  <button id="play">Pause</button>
+  <button id="loop" aria-pressed="false" title="Loop (L)">⟳ Loop</button>
+  <select id="speed" aria-label="Playback speed">
+    <option value="0.25">0.25× slowest</option>
+    <option value="0.5">0.5×</option>
+    <option value="0.75">0.75×</option>
+    <option value="1" selected>1× normal</option>
+    <option value="1.5">1.5×</option>
+    <option value="2">2×</option>
+    <option value="3">3× fastest</option>
+  </select>
+  <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Timeline" />
+  <span class="time" id="time">0.0s</span>
+  <a href="/">DROIN →</a>
+</div>
+
+<script>
+// ---------- tiny keyframe engine ----------
+const E = {
+  linear: p => p,
+  step: p => (p < 1 ? 0 : 1),
+  in2: p => p * p,
+  out2: p => 1 - (1 - p) * (1 - p),
+  inout: p => (p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2),
+  outBack: p => { const c = 1.9, c3 = c + 1; return 1 + c3 * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); },
+  inBack: p => { const c = 1.6; return (c + 1) * p * p * p - c * p * p; },
+};
+const tracks = new Map();
+function K(obj, prop, keys) {
+  if (!tracks.has(obj)) tracks.set(obj, {});
+  const t = tracks.get(obj);
+  (t[prop] ||= []).push(...keys.map(([time, v, ease]) => ({ time, v, ease: ease || 'inout' })));
+  t[prop].sort((a, b) => a.time - b.time);
+}
+function sample(keys, time) {
+  if (time <= keys[0].time) return keys[0].v;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const a = keys[i], b = keys[i + 1];
+    if (time < b.time) return a.v + (b.v - a.v) * E[b.ease]((time - a.time) / (b.time - a.time));
+  }
+  return keys[keys.length - 1].v;
+}
+function applyAt(time) {
+  for (const [obj, props] of tracks) for (const p in props) obj[p] = sample(props[p], time);
+}
+
+// ---------- scene state ----------
+const PI = Math.PI, TAU = PI * 2;
+const CLOSED_X = 540, OPEN_X = 650, BY = 520;   // book spine x (closed / open), centre y
+const EMERGE = [650, 430];                       // where the letters pop out of the pages
+const LY = 230, LETTER_X = [275, 425, 575, 725, 875], O_POS = [1025, LY];
+const LAND = [758, 530];                         // where the o lands on the right-hand page
+const book = { x: CLOSED_X, y: -320, ground: BY, rot: -150, sx: 1, sy: 1, cover: 0, face: 0, smile: 0, happy: 0, sp1: 0, sp2: 0 };
+const rays = { k: 0 };
+const letters = LETTER_X.map(x => ({ x, p: 0, q: 0, o: 0, sx: 1, sy: 1 }));
+const oL = { p: 0, o: 0, leap: 0, inBook: 0, x: O_POS[0], y: O_POS[1], s: 1, spin: 0, sx: 1, sy: 1, face: 0, smile: 0, ex: 0, sp1: 0, sp2: 0 };
+const tag = { o: 0, y: 16 };
+
+function squash(obj, t, amt = .8, dur = .25) {   // landing squash & recover
+  K(obj, 'sy', [[t, 1], [t + .06, amt, 'out2'], [t + dur, 1, 'outBack']]);
+  K(obj, 'sx', [[t, 1], [t + .06, 2 - amt, 'out2'], [t + dur, 1, 'outBack']]);
+}
+
+// ---------- timeline ----------
+// 1. the book tumbles in, lands and wakes up
+K(book, 'y', [[0, -320], [1.0, BY, 'in2'], [1.22, BY - 34, 'out2'], [1.42, BY, 'in2']]);
+K(book, 'rot', [[0, -150], [1.0, -10, 'out2'], [1.15, -16], [1.35, -7], [1.55, -10]]);
+squash(book, 1.0, .8, .22); squash(book, 1.42, .92, .2);
+K(book, 'face', [[1.9, 0], [2.1, 1, 'outBack'], [2.55, 1], [2.6, .1], [2.68, 1]]);
+K(book, 'smile', [[2.0, 0], [2.35, 1, 'out2']]);
+
+// 2. it straightens up and opens
+K(book, 'rot', [[2.9, -10], [3.2, 0, 'outBack']]);
+K(book, 'x', [[2.9, CLOSED_X], [3.25, OPEN_X]]);
+squash(book, 3.0, .93, .2);
+K(book, 'cover', [[3.2, 0], [3.7, PI]]);
+K(rays, 'k', [[3.6, 0], [3.85, 1, 'outBack'], [4.25, 1], [4.45, 0, 'in2']]);
+
+// 3. "pageno" pops out of the pages
+letters.forEach((L, i) => {
+  const t = 3.85 + i * .1;
+  K(L, 'o', [[t - .01, 0], [t, 1, 'step']]);
+  K(L, 'p', [[t, 0], [t + .55, 1, 'out2']]);
+  squash(L, t + .55, .8, .22);
+});
+const OE = 3.85 + 5 * .1;
+K(oL, 'o', [[OE - .01, 0], [OE, 1, 'step']]);
+K(oL, 'p', [[OE, 0], [OE + .55, 1, 'out2']]);
+squash(oL, OE + .55, .8, .22);
+K(oL, 'face', [[4.75, 0], [4.95, 1, 'outBack'], [5.6, 1], [5.65, .1], [5.72, 1]]);
+K(oL, 'smile', [[4.85, 0], [5.1, 1, 'out2']]);
+K(oL, 'sp1', [[5.0, 0], [5.25, 1, 'outBack'], [6.0, 1], [6.15, 0, 'in2']]);
+K(oL, 'sp2', [[5.1, 0], [5.35, 1, 'outBack'], [6.0, 1], [6.15, 0, 'in2']]);
+K(oL, 'ex', [[5.2, 0], [5.35, -12, 'out2'], [6.4, -12], [6.5, 0]]);
+
+// 4. p a g e n shrink into the o, which gulps them down
+letters.forEach((L, i) => {
+  const t = 6.0 + (4 - i) * .1;            // n goes first, p last
+  K(L, 'q', [[t, 0], [t + .4, 1, 'inBack']]);
+  K(L, 'o', [[t + .4, 1], [t + .41, 0, 'step']]);
+});
+K(oL, 'sy', [[6.4, 1], [6.6, 1.1, 'out2'], [6.85, 1, 'outBack']]);
+K(oL, 'sx', [[6.4, 1], [6.6, .92, 'out2'], [6.85, 1, 'outBack']]);
+K(oL, 'face', [[6.4, 1], [6.45, .2], [6.8, .2], [6.9, 1]]);
+
+// 5. the o jumps into the open book
+K(oL, 'sy', [[6.95, 1], [7.1, .75, 'out2'], [7.18, 1.15, 'out2'], [7.35, 1]]);
+K(oL, 'sx', [[6.95, 1], [7.1, 1.25, 'out2'], [7.18, .88, 'out2'], [7.35, 1]]);
+K(oL, 'leap', [[7.09, 0], [7.1, 1, 'step']]);
+K(oL, 'x', [[7.1, O_POS[0]], [7.65, LAND[0], 'out2']]);
+K(oL, 'y', [[7.1, O_POS[1]], [7.38, 90, 'out2'], [7.65, LAND[1], 'in2']]);
+K(oL, 's', [[7.1, 1], [7.65, .55]]);
+K(oL, 'spin', [[7.1, 0], [7.65, TAU]]);
+K(oL, 'inBook', [[7.64, 0], [7.65, 1, 'step']]);
+squash(oL, 7.65, .78, .22);
+squash(book, 7.65, .95, .2);
+
+// 6. the book closes over it, then hops back happily
+K(book, 'cover', [[7.95, PI], [8.4, 0]]);
+K(oL, 'o', [[8.44, 1], [8.45, 0, 'step']]);
+squash(book, 8.4, .92, .2);
+K(book, 'happy', [[8.45, 0], [8.55, 1, 'out2']]);
+K(book, 'x', [[8.6, OPEN_X], [9.05, CLOSED_X]]);
+K(book, 'y', [[8.6, BY], [8.82, 410, 'out2'], [9.05, 450, 'in2']]);
+K(book, 'rot', [[8.6, 0], [9.05, -10, 'outBack']]);
+K(book, 'ground', [[8.6, BY], [9.05, 450]]);         // shadow floor follows the hop up
+squash(book, 9.05, .9, .22);
+K(book, 'sp1', [[9.2, 0], [9.45, 1, 'outBack']]);
+K(book, 'sp2', [[9.3, 0], [9.55, 1, 'outBack']]);
+K(tag, 'o', [[9.4, 0], [10.0, 1]]);
+K(tag, 'y', [[9.4, 16], [10.0, 0, 'out2']]);
+const DURATION = 10.7;
+
+// ---------- build rays ----------
+const $ = id => document.getElementById(id);
+const rayEls = [-160, -125, -90, -55, -20].map(a => {
+  const r = a * PI / 180, c = Math.cos(r), s = Math.sin(r);
+  $('rays').insertAdjacentHTML('beforeend', `<line x1="${70 * c}" y1="${70 * s}" x2="${115 * c}" y2="${115 * s}" />`);
+  return $('rays').lastElementChild;
+});
+
+// ---------- render ----------
+const letterEls = [...document.querySelectorAll('#letters > g')];
+const oSmileLen = $('oSmile').getTotalLength(), bSmileLen = $('bSmile').getTotalLength();
+$('oSmile').style.strokeDasharray = oSmileLen;
+$('bSmile').style.strokeDasharray = bSmileLen;
+
+function sparkScale(el, k) {
+  const x = el.getAttribute('x1'), y = el.getAttribute('y1');
+  el.setAttribute('transform', `translate(${x},${y}) scale(${Math.max(k, .0001)}) translate(${-x},${-y})`);
+  el.style.opacity = k > .02 ? 1 : 0;
+}
+// a letter rising out of the book towards its spot
+function flight(p, [tx, ty]) {
+  return [EMERGE[0] + (tx - EMERGE[0]) * p, EMERGE[1] + (ty - EMERGE[1]) * p - 90 * 4 * p * (1 - p), .3 + .7 * Math.min(1, p * 1.3)];
+}
+
+function render() {
+  // book
+  const c = Math.cos(book.cover), open = (1 - c) / 2;
+  $('book').setAttribute('transform',
+    `translate(${book.x},${book.y}) translate(110,130) scale(${book.sx},${book.sy}) translate(-110,-130) rotate(${book.rot},110,0)`);
+  // closed: thickness peeks up-left; open: boards peek out under both pages (swap while the cover is edge-on)
+  $('thick').style.display = c >= 0 ? '' : 'none';
+  $('spreadBoard').style.display = c < 0 ? '' : 'none';
+  $('coverBoard').style.display = c < 0 ? '' : 'none';
+  $('coverLines').style.display = c < 0 ? '' : 'none';
+  $('spine').style.opacity = open * .5;
+  const cover = $('cover'), want = c >= 0 ? $('coverFront') : $('coverBack');
+  if (cover.parentNode !== want) want.appendChild(cover);
+  cover.setAttribute('transform', `translate(0,${-12 * Math.sin(book.cover)}) scale(${c},1)`);
+  $('coverRect').setAttribute('fill', c >= 0 ? 'var(--cover)' : 'var(--page)');
+  $('coverFace').style.opacity = c > 0 ? 1 : 0;
+  document.querySelectorAll('.bEye').forEach(e => e.setAttribute('ry', Math.max(0, 11 * book.face)));
+  $('bEyes').style.opacity = 1 - book.happy;
+  $('bSleepy').style.opacity = book.happy > .5 ? 0 : 1 - Math.min(1, book.face * 3);
+  $('bHappy').style.opacity = book.happy;
+  $('bSmile').style.strokeDashoffset = bSmileLen * (1 - book.smile);
+  sparkScale($('bsp1'), book.sp1);
+  sparkScale($('bsp2'), book.sp2);
+
+  const sh = $('bookShadow');
+  sh.setAttribute('cx', book.x + 110 * (1 - open));
+  sh.setAttribute('cy', book.ground + 142);
+  sh.setAttribute('rx', (120 + 110 * open) * Math.max(.4, 1 - (book.ground - book.y) / 400));
+  sh.setAttribute('opacity', .12 * Math.max(0, 1 - (book.ground - book.y) / 600));
+
+  $('rays').setAttribute('transform', `translate(${OPEN_X},390) scale(${Math.max(rays.k, .0001)})`);
+  $('rays').style.opacity = rays.k > .02 ? 1 : 0;
+
+  // letters: rise out of the book (p), then get pulled into the o (q)
+  letters.forEach((L, i) => {
+    const [fx, fy, fs] = flight(L.p, [L.x, LY]);
+    const x = fx + (O_POS[0] - fx) * L.q, y = fy + (O_POS[1] - fy) * L.q;
+    const s = fs * (1 - .8 * L.q), r = (L.x < OPEN_X ? -30 : 30) * (1 - L.p);
+    letterEls[i].setAttribute('transform',
+      `translate(${x},${y}) translate(0,60) scale(${L.sx},${L.sy}) translate(0,-60) rotate(${r}) scale(${s})`);
+    letterEls[i].style.opacity = L.o;
+  });
+
+  // the o: rises with the letters, then leaps into the book (and spins like a coin on the way)
+  let ox, oy, os;
+  if (oL.inBook) { ox = LAND[0] - OPEN_X; oy = LAND[1] - BY; os = oL.s; }
+  else if (oL.leap) { ox = oL.x; oy = oL.y; os = oL.s; }
+  else[ox, oy, os] = flight(oL.p, O_POS);
+  const oEl = $('oLetter'), oParent = oL.inBook ? $('oSlot') : $('oStage');
+  if (oEl.parentNode !== oParent) oParent.appendChild(oEl);
+  oEl.setAttribute('transform', `translate(${ox},${oy}) scale(${os}) translate(0,60) scale(${oL.sx},${oL.sy}) translate(0,-60)`);
+  oEl.style.opacity = oL.o;
+  const oc = Math.cos(oL.spin);
+  $('oBody').setAttribute('transform', `scale(${oc},1)`);
+  $('oFace').style.opacity = oc > 0 ? 1 : 0;
+  $('oFace').setAttribute('transform', `translate(${oL.ex},0)`);
+  document.querySelectorAll('.oEye').forEach(e => e.setAttribute('ry', Math.max(0, 8 * oL.face)));
+  $('oSmile').style.strokeDashoffset = oSmileLen * (1 - oL.smile);
+  sparkScale($('osp1'), oL.sp1);
+  sparkScale($('osp2'), oL.sp2);
+
+  $('tagline').setAttribute('opacity', tag.o);
+  $('tagline').setAttribute('transform', `translate(0,${tag.y})`);
+}
+
+// ---------- playback ----------
+const LOOP_HOLD = 1.2;                    // seconds to rest on the final frame before looping
+let time = 0, playing = true, speed = 1, loop = false, hold = 0, last = performance.now();
+const scrub = $('scrub'), timeEl = $('time'), playBtn = $('play'), loopBtn = $('loop');
+function seek(t) { time = Math.max(0, Math.min(DURATION, t)); applyAt(time); render(); scrub.value = time / DURATION * 1000; timeEl.textContent = time.toFixed(1) + 's'; }
+function frame(now) {
+  const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
+  if (playing) {
+    if (time < DURATION) seek(time + dt * speed);
+    else if (loop) { hold += raw; if (hold >= LOOP_HOLD) { hold = 0; seek(0); } }
+    else { playing = false; playBtn.textContent = 'Play'; }
+  }
+  requestAnimationFrame(frame);
+}
+loopBtn.onclick = () => {
+  loop = !loop; hold = 0;
+  loopBtn.classList.toggle('on', loop);
+  loopBtn.setAttribute('aria-pressed', loop);
+};
+$('replay').onclick = () => { seek(0); playing = true; playBtn.textContent = 'Pause'; };
+playBtn.onclick = () => {
+  if (time >= DURATION) seek(0);
+  playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play';
+};
+$('speed').onchange = e => { speed = +e.target.value; };
+scrub.oninput = () => { playing = false; playBtn.textContent = 'Play'; seek(scrub.value / 1000 * DURATION); };
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
+  if (e.code === 'KeyL') loopBtn.click();
+});
+
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) { seek(DURATION); playing = false; playBtn.textContent = 'Play'; }
+else seek(0);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

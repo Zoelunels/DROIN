@@ -1,0 +1,1429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DROIN Spot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root { --bg: #120E0C; --ui: #F7F4ED; --muted: #9A948B; --accent: #F2953B; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ui); font-family: Manrope, system-ui, sans-serif; overflow: hidden; }
+  .stage { position: fixed; top: 0; left: 0; right: 0; bottom: 84px; display: grid; place-items: center; padding: 16px; }
+  canvas {
+    width: min(100%, calc((100vh - 116px) * 16 / 9)); aspect-ratio: 16 / 9; display: block;
+    border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+  }
+  .play {
+    position: absolute; inset: 0; margin: auto; width: 168px; height: 168px; border-radius: 50%;
+    border: 0; background: var(--accent); color: #2A1D18; cursor: pointer; display: grid; place-items: center;
+    box-shadow: 0 20px 60px rgba(242,149,59,.45); transition: transform .2s;
+    font: 800 15px Manrope, system-ui, sans-serif;
+  }
+  .play:hover { transform: scale(1.05); }
+  .play svg { width: 54px; height: 54px; margin-left: 8px; }
+  .play span { position: absolute; bottom: -38px; white-space: nowrap; color: var(--ui); opacity: .8; }
+  .play[hidden] { display: none; }
+  .controls {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    background: rgba(255,255,255,.06); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 8px 12px;
+    width: min(860px, calc(100vw - 32px));
+  }
+  .controls button, .controls a {
+    font: 700 13px Manrope, system-ui, sans-serif; color: var(--ui); text-decoration: none;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 12px;
+    padding: 7px 12px; cursor: pointer; white-space: nowrap;
+  }
+  .controls button:hover, .controls a:hover { border-color: var(--accent); }
+  .controls button.on { background: var(--accent); border-color: var(--accent); color: #2A1D18; }
+  .controls button:focus-visible, .controls a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .controls button:disabled { opacity: .5; cursor: progress; }
+  .controls input[type=range] { flex: 1 1 140px; min-width: 60px; accent-color: var(--accent); }
+  .time { font: 600 12px Manrope, system-ui, sans-serif; color: var(--muted); width: 96px; text-align: right; font-variant-numeric: tabular-nums; }
+  #status { font: 600 12px Manrope, system-ui, sans-serif; color: var(--muted); }
+  @media (max-width: 800px) { .stage { bottom: 132px; } canvas { width: min(100%, calc((100vh - 164px) * 16 / 9)); } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="cv" width="1920" height="1080" aria-label="DROIN 15-second app spot"></canvas>
+  <button class="play" id="bigPlay" aria-label="Play with sound">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>
+    <span>Play with sound</span>
+  </button>
+</div>
+<div class="controls">
+  <button id="replay">Replay</button>
+  <button id="play">Play</button>
+  <button id="loop" class="on" aria-pressed="true" title="Loop (L)">⟳ Loop</button>
+  <button id="mute" aria-pressed="false" title="Mute (M)">🔊 Sound</button>
+  <input id="scrub" type="range" min="0" max="1500" value="0" aria-label="Timeline" />
+  <span class="time" id="time">0.00 / 15.00</span>
+  <button id="export" title="Render a 1080p60 MP4 with sound">⬇ Export MP4</button>
+  <span id="status"></span>
+  <a href="/">DROIN intro</a>
+</div>
+
+<script>
+// =====================================================================================
+//  DROIN — 15s spot. Everything is drawn on a 1920×1080 canvas from a single
+//  renderFrame(t) function, so playback, scrubbing and MP4 export all produce the
+//  exact same frames. Sound is synthesized with Web Audio from one event list.
+// =====================================================================================
+const W = 1920, H = 1080, DUR = 15, FPS = 60;
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const COL = {
+  ink: '#2A1D18', ink2: '#1A1310', cream: '#F7F4ED', cream2: '#EFE7D8', white: '#FFFDF8',
+  orange: '#F2953B', orange2: '#E8A04A', deep: '#C8702C', peach: '#FAD7B7', panel: '#F8E4CB',
+  gray: '#858078', green: '#6F8F72', red: '#C96A4A', blue: '#5B8DB8', pink: '#E07A8B', yellow: '#D9A441',
+};
+
+// ---------- math & easing ----------
+const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
+const lerp = (a, b, p) => a + (b - a) * p;
+const Ez = {
+  lin: p => p,
+  in2: p => p * p,
+  in3: p => p * p * p,
+  out2: p => 1 - (1 - p) ** 2,
+  out3: p => 1 - (1 - p) ** 3,
+  out5: p => 1 - (1 - p) ** 5,
+  inOut3: p => (p < .5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2),
+  outBack: p => { const c = 1.7, c3 = c + 1; return 1 + c3 * (p - 1) ** 3 + c * (p - 1) ** 2; },
+  outBackBig: p => { const c = 2.8, c3 = c + 1; return 1 + c3 * (p - 1) ** 3 + c * (p - 1) ** 2; },
+  outElastic: p => (p === 0 ? 0 : p === 1 ? 1 : 2 ** (-10 * p) * Math.sin((p * 10 - .75) * (2 * Math.PI / 3)) + 1),
+};
+const pr = (t, s, d) => clamp((t - s) / d);
+const ez = (t, s, d, f = Ez.out3) => f(pr(t, s, d));
+// A bump that rises and falls back to 0 (for squash, pulses).
+const bump = (t, s, d) => { const p = pr(t, s, d); return p <= 0 || p >= 1 ? 0 : Math.sin(Math.PI * p) * (1 - p * .4); };
+// Deterministic random so every render (and the export) is identical.
+function rng(seed) {
+  return () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rp = n => (n < 0 ? '-' : '') + 'Rp ' + Math.abs(Math.round(n)).toLocaleString('id-ID');
+
+// ---------- drawing helpers ----------
+const font = (size, w = 800) => `${w} ${size}px Manrope, system-ui, sans-serif`;
+function txt(s, x, y, size, color, { w = 800, align = 'left', base = 'alphabetic', alpha = 1, ls = 0 } = {}) {
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.font = font(size, w); ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = base;
+  if (ls) ctx.letterSpacing = `${ls}px`;
+  ctx.fillText(s, x, y);
+  ctx.restore();
+}
+function measure(s, size, w = 800, ls = 0) {
+  ctx.save(); ctx.font = font(size, w); if (ls) ctx.letterSpacing = `${ls}px`;
+  const m = ctx.measureText(s).width; ctx.restore(); return m;
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function circle(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); }
+
+// Minimal line icons, drawn in a 24×24 box centred on (x, y).
+function glyph(name, x, y, s, color, lw = 2.2) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s / 24, s / 24);
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  switch (name) {
+    case 'food':
+      ctx.moveTo(-5, -9); ctx.lineTo(-5, 9); ctx.moveTo(-8, -9); ctx.lineTo(-8, -3); ctx.quadraticCurveTo(-8, 0, -5, 0);
+      ctx.quadraticCurveTo(-2, 0, -2, -3); ctx.lineTo(-2, -9); ctx.moveTo(5, 9); ctx.lineTo(5, -9);
+      ctx.quadraticCurveTo(9.5, -6, 8.5, 1); ctx.lineTo(5, 1); ctx.stroke(); break;
+    case 'bus':
+      ctx.roundRect(-8, -9, 16, 15, 3); ctx.moveTo(-8, -1); ctx.lineTo(8, -1); ctx.moveTo(-5, 6); ctx.lineTo(-5, 9);
+      ctx.moveTo(5, 6); ctx.lineTo(5, 9); ctx.stroke(); break;
+    case 'bag':
+      ctx.roundRect(-8, -4, 16, 13, 3); ctx.moveTo(-4, -4); ctx.quadraticCurveTo(-4, -10, 0, -10);
+      ctx.quadraticCurveTo(4, -10, 4, -4); ctx.stroke(); break;
+    case 'coffee':
+      ctx.moveTo(-8, -3); ctx.lineTo(-7, 8); ctx.lineTo(5, 8); ctx.lineTo(6, -3); ctx.closePath();
+      ctx.moveTo(6, -1); ctx.quadraticCurveTo(11, -1, 10, 3); ctx.quadraticCurveTo(9, 6, 5.5, 5);
+      ctx.moveTo(-3, -6); ctx.quadraticCurveTo(-5, -8, -3, -10); ctx.moveTo(1, -6); ctx.quadraticCurveTo(-1, -8, 1, -10); ctx.stroke(); break;
+    case 'salary':
+      ctx.roundRect(-9, -4, 18, 13, 2.5); ctx.moveTo(-3, -4); ctx.lineTo(-3, -7); ctx.lineTo(3, -7); ctx.lineTo(3, -4);
+      ctx.moveTo(-9, 2); ctx.lineTo(9, 2); ctx.stroke(); break;
+    case 'bolt':
+      ctx.moveTo(2, -10); ctx.lineTo(-6, 2); ctx.lineTo(0, 2); ctx.lineTo(-2, 10); ctx.lineTo(6, -2); ctx.lineTo(0, -2); ctx.closePath(); ctx.fill(); break;
+    case 'plane':
+      ctx.moveTo(-9, 0); ctx.lineTo(9, -7); ctx.lineTo(3, 8); ctx.lineTo(0, 2); ctx.closePath(); ctx.moveTo(0, 2); ctx.lineTo(9, -7); ctx.stroke(); break;
+    case 'laptop':
+      ctx.roundRect(-7, -7, 14, 10, 1.5); ctx.moveTo(-10, 6); ctx.lineTo(10, 6); ctx.stroke(); break;
+    case 'shield':
+      ctx.moveTo(0, -9); ctx.lineTo(8, -6); ctx.lineTo(7, 2); ctx.quadraticCurveTo(5, 7, 0, 10); ctx.quadraticCurveTo(-5, 7, -7, 2);
+      ctx.lineTo(-8, -6); ctx.closePath(); ctx.stroke(); break;
+    case 'ticket':
+      ctx.roundRect(-9, -6, 18, 12, 2); ctx.moveTo(2, -6); ctx.lineTo(2, 6); ctx.stroke(); break;
+    case 'home':
+      ctx.moveTo(-9, 0); ctx.lineTo(0, -8); ctx.lineTo(9, 0); ctx.moveTo(-6, -2); ctx.lineTo(-6, 8); ctx.lineTo(6, 8); ctx.lineTo(6, -2); ctx.stroke(); break;
+    case 'pie':
+      ctx.arc(0, 0, 8.5, 0, Math.PI * 2); ctx.moveTo(0, 0); ctx.lineTo(0, -8.5); ctx.moveTo(0, 0); ctx.lineTo(8.5, 0); ctx.stroke(); break;
+    case 'target':
+      ctx.arc(0, 0, 8.5, 0, Math.PI * 2); ctx.moveTo(4.5, 0); ctx.arc(0, 0, 4.5, 0, Math.PI * 2); ctx.stroke(); circle(0, 0, 1.6); ctx.fill(); break;
+    case 'user':
+      ctx.arc(0, -4, 4, 0, Math.PI * 2); ctx.moveTo(-8, 9); ctx.quadraticCurveTo(-8, 2, 0, 2); ctx.quadraticCurveTo(8, 2, 8, 9); ctx.stroke(); break;
+    case 'wallet':
+      ctx.roundRect(-9, -6, 18, 14, 3); ctx.moveTo(9, -1); ctx.lineTo(3, -1); ctx.lineTo(3, 4); ctx.lineTo(9, 4); ctx.stroke(); break;
+    case 'cal':
+      ctx.roundRect(-8, -7, 16, 15, 2.5); ctx.moveTo(-8, -2); ctx.lineTo(8, -2); ctx.moveTo(-4, -10); ctx.lineTo(-4, -6);
+      ctx.moveTo(4, -10); ctx.lineTo(4, -6); ctx.stroke(); break;
+    case 'plus':
+      ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.moveTo(0, -7); ctx.lineTo(0, 7); ctx.stroke(); break;
+    case 'up':
+      ctx.moveTo(-6, 4); ctx.lineTo(0, -3); ctx.lineTo(3, 1); ctx.lineTo(8, -5); ctx.moveTo(4, -5); ctx.lineTo(8, -5); ctx.lineTo(8, -1); ctx.stroke(); break;
+    case 'spark':
+      ctx.moveTo(0, -10); ctx.quadraticCurveTo(1, -1, 10, 0); ctx.quadraticCurveTo(1, 1, 0, 10); ctx.quadraticCurveTo(-1, 1, -10, 0);
+      ctx.quadraticCurveTo(-1, -1, 0, -10); ctx.fill(); break;
+  }
+  ctx.restore();
+}
+function iconCircle(x, y, r, bg, name, fg = COL.white) {
+  circle(x, y, r); ctx.fillStyle = bg; ctx.fill();
+  glyph(name, x, y, r * 1.05, fg, 2.4);
+}
+// Tiny flat drawer mascot (app icon / toast).
+function miniDrawer(x, y, s, happy = 0) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  rr(-17, -14, 34, 28, 8); ctx.fillStyle = COL.orange; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = COL.ink; ctx.stroke();
+  rr(-12, -5, 26, 17, 5); ctx.fillStyle = COL.panel; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = COL.ink;
+  if (happy > .5) {
+    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-6, 3); ctx.quadraticCurveTo(-4, 0, -2, 3); ctx.moveTo(4, 3); ctx.quadraticCurveTo(6, 0, 8, 3); ctx.stroke();
+  } else { circle(-4, 2.5, 1.8); ctx.fill(); circle(6, 2.5, 1.8); ctx.fill(); }
+  ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-1, 6.5); ctx.quadraticCurveTo(1, 9, 3, 6.5); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- the coin / "O" ----------
+function drawCoin(x, y, r, spin = 0, o = {}) {
+  const c = Math.cos(spin), sn = Math.sin(spin);
+  ctx.save(); ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); ctx.globalAlpha *= o.alpha ?? 1;
+  const rx = Math.max(.6, r * Math.abs(c)), dx = -r * .17 * sn;
+  ctx.fillStyle = COL.orange;
+  ctx.beginPath(); ctx.ellipse(dx, 0, rx, r, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillRect(Math.min(0, dx), -r, Math.abs(dx), 2 * r);
+  ctx.fillStyle = o.color || COL.ink;
+  ctx.beginPath(); ctx.ellipse(0, 0, rx, r, 0, 0, Math.PI * 2); ctx.fill();
+  if (c > .05) {
+    ctx.scale(c, 1);
+    if (o.face) {
+      ctx.fillStyle = COL.panel;
+      ctx.beginPath(); ctx.ellipse(-.42 * r, -.14 * r, .13 * r, .13 * r * (o.blink ?? 1), 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(.42 * r, -.14 * r, .13 * r, .13 * r * (o.blink ?? 1), 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = COL.panel; ctx.lineWidth = .17 * r; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-.24 * r, .16 * r); ctx.quadraticCurveTo(0, .48 * r, .24 * r, .16 * r); ctx.stroke();
+    } else {
+      ctx.strokeStyle = 'rgba(248,228,203,.35)'; ctx.lineWidth = .08 * r;
+      circle(0, 0, .72 * r); ctx.stroke();
+      glyph('spark', 0, 0, r * .7, 'rgba(248,228,203,.55)');
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- the drawer mascot (same geometry as the DROIN intro) ----------
+const DT = -0.2126;
+const sk = (x, y) => [x, y + DT * x];
+const vadd = (a, b) => [a[0] + b[0], a[1] + b[1]];
+const vmul = (a, k) => [a[0] * k, a[1] * k];
+const mapObj = (o, f) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, f(v)]));
+const DD = [-110, -80], DPT = vmul(DD, .2), DOPEN = [95, 70];
+const DF = { TL: sk(-150, -95), TR: sk(150, -95), BL: sk(-150, 95), BR: sk(150, 95) };
+const dbf = mapObj(DF, p => vadd(p, DPT)), dbb = mapObj(DF, p => vadd(p, DD));
+const dtr = { TL: vadd(sk(-138, -86), DPT), TR: vadd(sk(138, -86), DPT), BL: vadd(sk(-138, 86), DPT) };
+const polyStr = pts => 'M' + pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' L') + 'Z';
+function roundPolyStr(pts, r) {
+  const n = pts.length; let d = '';
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], a = pts[(i + n - 1) % n], b = pts[(i + 1) % n];
+    const la = Math.hypot(a[0] - p[0], a[1] - p[1]), lb = Math.hypot(b[0] - p[0], b[1] - p[1]);
+    const q = Math.min(r, la / 2, lb / 2);
+    const p1 = [p[0] + (a[0] - p[0]) / la * q, p[1] + (a[1] - p[1]) / la * q];
+    const p2 = [p[0] + (b[0] - p[0]) / lb * q, p[1] + (b[1] - p[1]) / lb * q];
+    d += (i ? 'L' : 'M') + p1.join(',') + 'Q' + p.join(',') + ' ' + p2.join(',');
+  }
+  return d + 'Z';
+}
+const P_SIL = new Path2D(roundPolyStr([dbb.TL, dbb.TR, dbf.TR, dbf.BR, dbf.BL, dbb.BL], 30));
+const P_TOP = new Path2D(polyStr([dbb.TL, dbb.TR, dbf.TR, dbf.TL]));
+const P_LEFT = new Path2D(polyStr([dbb.TL, dbf.TL, dbf.BL, dbb.BL]));
+const P_FRONT = new Path2D(polyStr([dbf.TL, dbf.TR, dbf.BR, dbf.BL]));
+const P_HILITE = new Path2D(polyStr([sk(-150, -50), sk(-150, 60), vadd(sk(-150, 60), vmul(DPT, .75)), vadd(sk(-150, -50), vmul(DPT, .75))]));
+
+function drawerXf(st) {
+  ctx.translate(st.x, st.y + 127 * st.s);
+  ctx.scale(st.s * (st.sx ?? 1), st.s * (st.sy ?? 1));
+  ctx.translate(0, -127);
+}
+function drawerToWorld(st, p) {
+  return [st.x + p[0] * st.s * (st.sx ?? 1), st.y + 127 * st.s + (p[1] - 127) * st.s * (st.sy ?? 1)];
+}
+function drawerBack(st) {
+  ctx.save(); drawerXf(st);
+  ctx.fillStyle = 'rgba(42,29,24,.13)'; ctx.beginPath(); ctx.ellipse(-40, 142, 225, 17, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save(); ctx.clip(P_SIL);
+  ctx.fillStyle = COL.orange; ctx.fill(P_TOP);
+  ctx.fillStyle = COL.deep; ctx.fill(P_LEFT);
+  ctx.fillStyle = COL.ink; ctx.fill(P_FRONT);
+  ctx.restore();
+  ctx.lineWidth = 14; ctx.lineJoin = 'round'; ctx.strokeStyle = COL.ink; ctx.stroke(P_SIL);
+  const k = st.k || 0;
+  if (k > .01) {
+    const ov = vmul(DOPEN, k), tl2 = vadd(dtr.TL, ov), tr2 = vadd(dtr.TR, ov), bl2 = vadd(dtr.BL, ov);
+    ctx.lineWidth = 12;
+    const left = new Path2D(polyStr([dtr.TL, tl2, bl2, dtr.BL]));
+    ctx.fillStyle = COL.deep; ctx.fill(left); ctx.stroke(left);
+    const open = new Path2D(polyStr([dtr.TL, dtr.TR, tr2, tl2]));
+    const g = ctx.createLinearGradient(dtr.TL[0], dtr.TL[1], tl2[0] + 60, tl2[1] + 40);
+    g.addColorStop(0, '#1E120D'); g.addColorStop(1, '#7A5038');
+    ctx.fillStyle = g; ctx.fill(open); ctx.stroke(open);
+  }
+  ctx.restore();
+}
+function drawerFront(st) {
+  ctx.save(); drawerXf(st);
+  ctx.save();
+  const ov = vmul(DOPEN, st.k || 0); ctx.translate(ov[0], ov[1]);
+  for (const k of [1, .8, .6, .4, .2]) {
+    ctx.save(); ctx.translate(DPT[0] * k, DPT[1] * k); ctx.transform(1, DT, 0, 1, 0, 0);
+    rr(-150, -95, 300, 190, 38); ctx.fillStyle = COL.ink; ctx.fill(); ctx.lineWidth = 14; ctx.strokeStyle = COL.ink; ctx.stroke();
+    ctx.restore();
+  }
+  ctx.fillStyle = '#FFF3E2'; ctx.fill(P_HILITE);
+  ctx.transform(1, DT, 0, 1, 0, 0);
+  rr(-150, -95, 300, 190, 38); ctx.fillStyle = COL.panel; ctx.fill(); ctx.lineWidth = 14; ctx.strokeStyle = COL.ink; ctx.stroke();
+  // face
+  const lx = st.lx || 0, ly = st.ly || 0, happy = st.happy || 0, mouth = st.mouth || 0;
+  ctx.fillStyle = COL.ink; ctx.strokeStyle = COL.ink; ctx.lineCap = 'round';
+  if (happy < .5) {
+    const ry = Math.max(.8, 13 * (st.blink ?? 1));
+    for (const ex of [-68, 68]) { ctx.beginPath(); ctx.ellipse(ex + lx, 4 + ly, 13, ry, 0, 0, Math.PI * 2); ctx.fill(); }
+  } else {
+    ctx.lineWidth = 11; ctx.beginPath();
+    ctx.moveTo(-84, 10); ctx.quadraticCurveTo(-68, -10, -52, 10); ctx.moveTo(52, 10); ctx.quadraticCurveTo(68, -10, 84, 10); ctx.stroke();
+  }
+  if (mouth > .03) { ctx.beginPath(); ctx.ellipse(0, 34, 11 * mouth, 14 * mouth, 0, 0, Math.PI * 2); ctx.fill(); }
+  else { ctx.lineWidth = 11; ctx.beginPath(); ctx.moveTo(-22, 24); ctx.quadraticCurveTo(0, 48 + happy * 6, 22, 24); ctx.stroke(); }
+  ctx.restore();
+  // sparks
+  const sp = st.sparks || 0;
+  if (sp > .02) {
+    ctx.strokeStyle = COL.orange; ctx.lineWidth = 22; ctx.lineCap = 'round';
+    for (const [x1, y1, x2, y2] of [[168, -168, 160, -222], [196, -152, 236, -196]]) {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(lerp(x1, x2, sp), lerp(y1, y2, sp)); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+// Things that fall into the drawer are visible above the tray's back edge or inside the opening.
+function drawerClip(st) {
+  const k = st.k || 0;
+  const a = drawerToWorld(st, dtr.TL), b = drawerToWorld(st, dtr.TR);
+  const ov = vmul(DOPEN, k);
+  const tl2 = drawerToWorld(st, vadd(dtr.TL, ov)), tr2 = drawerToWorld(st, vadd(dtr.TR, ov));
+  const p = new Path2D();
+  p.rect(-4000, -4000, 12000, 12000);
+  p.addPath(new Path2D(polyStr([a, tl2, tr2, [Math.max(tr2[0], b[0]), 6000], [a[0], 6000]])));
+  return p;
+}
+function trayCenter(st) {
+  const ov = DOPEN;
+  const c = vmul(vadd(vadd(dtr.TL, dtr.TR), vadd(vadd(dtr.TL, ov), vadd(dtr.TR, ov))), .25);
+  return drawerToWorld(st, c);
+}
+
+// ---------- the DROIN wordmark (same strokes as the brand asset) ----------
+const WM = {
+  D: new Path2D('M162,318 V462 H236 C292,462 314,428 314,390 C314,352 292,318 236,318 Z'),
+  R: new Path2D('M397,462 V318 H468 C508,318 528,342 528,368 C528,394 508,414 468,414 H397 M472,416 L526,462'),
+  I: new Path2D('M855,318 V462'),
+  N: new Path2D('M952,462 V318 L1104,462 V318'),
+};
+const WM_CX = { D: 238, R: 462, I: 855, N: 1028 };
+function drawWordmark(cx, cy, sc, t, t0, color = COL.ink) {
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); ctx.translate(-635, -390);
+  ['D', 'R', 'O', 'I', 'N'].forEach((L, i) => {
+    const s = t0 + i * .055, p = ez(t, s, .55, Ez.outBack), pa = pr(t, s, .12);
+    if (pa <= 0) return;
+    if (L === 'O') { drawCoin(695, 390 - (1 - p) * 220, 112, (1 - ez(t, s, .4, Ez.out3)) * Math.PI * 4, { face: true, alpha: pa }); return; }
+    ctx.save(); ctx.globalAlpha *= pa;
+    ctx.translate(WM_CX[L], 462 + (1 - p) * 160); ctx.scale(1, lerp(.5, 1, clamp(p * 1.4))); ctx.translate(-WM_CX[L], -462);
+    ctx.lineWidth = 64; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color; ctx.stroke(WM[L]);
+    ctx.restore();
+  });
+  const sp = ez(t, t0 + .38, .35, Ez.outBack);
+  if (sp > .02) {
+    ctx.strokeStyle = COL.orange; ctx.lineWidth = 26; ctx.lineCap = 'round';
+    for (const [x1, y1, x2, y2] of [[738, 240, 714, 196], [790, 250, 823, 190]]) {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(lerp(x1, x2, sp), lerp(y1, y2, sp)); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- props ----------
+function drawReceipt(x, y, s, rot, amount) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+  ctx.beginPath(); ctx.moveTo(-34, -46); ctx.lineTo(34, -46); ctx.lineTo(34, 40);
+  for (let i = 0; i < 6; i++) ctx.lineTo(34 - (i + .5) * 68 / 6, i % 2 ? 40 : 48);
+  ctx.lineTo(-34, 40); ctx.closePath();
+  ctx.fillStyle = COL.white; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(42,29,24,.25)'; ctx.stroke();
+  ctx.fillStyle = 'rgba(42,29,24,.18)';
+  for (let i = 0; i < 4; i++) ctx.fillRect(-22, -30 + i * 12, i === 3 ? 26 : 44, 4);
+  if (amount) txt(amount, 0, 30, 13, COL.red, { align: 'center', w: 800 });
+  ctx.restore();
+}
+function confetti(t, t0, x, y, n, seed, { spread = Math.PI * 1.2, speed = 900, up = -Math.PI / 2 } = {}) {
+  const dt = t - t0; if (dt < 0 || dt > 1.8) return;
+  const cols = [COL.orange, COL.ink, COL.peach, COL.green, COL.yellow, COL.blue];
+  for (let i = 0; i < n; i++) {
+    const r = rng(seed * 997 + i);
+    const ang = up + (r() - .5) * spread, sp = speed * (.4 + r() * .8);
+    const k = (1 - Math.exp(-3 * dt)) / 3;
+    const px = x + Math.cos(ang) * sp * k, py = y + Math.sin(ang) * sp * k + 700 * dt * dt;
+    ctx.save(); ctx.globalAlpha *= clamp(1.6 - dt); ctx.translate(px, py); ctx.rotate(r() * 6 + dt * (r() * 14 - 7));
+    ctx.fillStyle = cols[i % cols.length];
+    if (i % 3 === 0) { circle(0, 0, 6 + r() * 4); ctx.fill(); }
+    else ctx.fillRect(-9, -4, 18, 8 + r() * 4);
+    ctx.restore();
+  }
+}
+function floatCard(x, y, w, h, rot, scale, alpha, draw, fill = COL.white) {
+  if (alpha <= 0 || scale <= 0) return;
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(x, y); ctx.rotate(rot); ctx.scale(scale, scale);
+  ctx.save(); ctx.shadowColor = 'rgba(42,29,24,.25)'; ctx.shadowBlur = 44; ctx.shadowOffsetY = 20;
+  rr(-w / 2, -h / 2, w, h, 24); ctx.fillStyle = fill; ctx.fill(); ctx.restore();
+  draw(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+// =====================================================================================
+//  App screens (drawn in phone-screen points: 390 × 844)
+// =====================================================================================
+function statusBar(dark = false) {
+  const c = dark ? COL.cream : COL.ink;
+  txt('9:41', 36, 38, 16, c, { w: 800 });
+  ctx.fillStyle = c;
+  for (let i = 0; i < 4; i++) ctx.fillRect(292 + i * 6, 34 - i * 3, 4, 4 + i * 3);
+  rr(322, 24, 34, 15, 4.5); ctx.lineWidth = 1.6; ctx.strokeStyle = c; ctx.stroke();
+  rr(325, 27, 24, 9, 2.5); ctx.fill(); ctx.fillRect(358, 29, 2.5, 5);
+}
+function tabBar(active) {
+  ctx.fillStyle = COL.white; ctx.fillRect(0, 760, 390, 84);
+  ctx.fillStyle = 'rgba(42,29,24,.07)'; ctx.fillRect(0, 760, 390, 1.5);
+  [['home', 44], ['pie', 120], ['target', 270], ['user', 346]].forEach(([g, x]) =>
+    glyph(g, x, 790, 24, g === active ? COL.orange : 'rgba(42,29,24,.38)', 2.4));
+  rr(130, 830, 130, 5, 3); ctx.fillStyle = COL.ink; ctx.fill();
+}
+function fab(t, pulse = 0) {
+  const s = 1 + pulse;
+  ctx.save(); ctx.translate(195, 772); ctx.scale(s, s);
+  ctx.save(); ctx.shadowColor = 'rgba(242,149,59,.5)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+  circle(0, 0, 30); ctx.fillStyle = COL.orange; ctx.fill(); ctx.restore();
+  glyph('plus', 0, 0, 30, COL.ink, 3);
+  ctx.restore();
+}
+function tapRing(x, y, t, t0) {
+  const p = pr(t, t0, .45); if (p <= 0 || p >= 1) return;
+  ctx.save();
+  circle(x, y, 18 + 40 * Ez.out3(p)); ctx.lineWidth = 4; ctx.strokeStyle = `rgba(42,29,24,${.35 * (1 - p)})`; ctx.stroke();
+  circle(x, y, 22 * (1 - Ez.in2(p))); ctx.fillStyle = `rgba(42,29,24,${.22 * (1 - p)})`; ctx.fill();
+  ctx.restore();
+}
+
+const WALLETS = [
+  { name: 'BCA', icon: 'wallet', color: COL.blue, amt: 2150000 },
+  { name: 'Cash', icon: 'wallet', color: COL.green, amt: 1720000 },
+  { name: 'GoPay', icon: 'wallet', color: '#3E9C8E', amt: 380000 },
+];
+const ROWS = [
+  { icon: 'coffee', color: COL.yellow, title: 'Morning coffee', sub: 'GoPay · 08:12', amt: -22000 },
+  { icon: 'bus', color: COL.blue, title: 'Transport', sub: 'BCA · 07:40', amt: -15000 },
+  { icon: 'salary', color: COL.green, title: 'Salary', sub: 'BCA · Yesterday', amt: 8000000 },
+  { icon: 'bag', color: COL.pink, title: 'Shopping', sub: 'Cash · Yesterday', amt: -129000 },
+];
+const NEW_ROW = { icon: 'food', color: COL.orange, title: 'Lunch', sub: 'GoPay · just now', amt: -25000 };
+// Rounded to whole thousands so the ticker never shows odd in-between amounts.
+const balanceAt = t => Math.round((lerp(0, 4250000, ez(t, 4.45, 1.0, Ez.out3)) - 25000 * ez(t, 8.62, .5, Ez.out3)) / 1000) * 1000;
+
+function txRow(r, y, alpha = 1, dx = 0, hl = 0) {
+  ctx.save(); ctx.globalAlpha *= alpha; ctx.translate(dx, 0);
+  if (hl > 0) { rr(10, y - 6, 370, 60, 16); ctx.fillStyle = `rgba(242,149,59,${.22 * hl})`; ctx.fill(); }
+  iconCircle(42, y + 24, 20, r.color, r.icon);
+  txt(r.title, 74, y + 20, 15, COL.ink, { w: 800 });
+  txt(r.sub, 74, y + 40, 12, COL.gray, { w: 600 });
+  txt((r.amt > 0 ? '+' : '') + rp(r.amt), 366, y + 29, 15, r.amt > 0 ? COL.green : COL.red, { w: 800, align: 'right' });
+  ctx.restore();
+}
+
+function homeScreen(t) {
+  ctx.fillStyle = COL.cream; ctx.fillRect(0, 0, 390, 844);
+  statusBar();
+  const hp = ez(t, 4.3, .45);
+  ctx.save(); ctx.globalAlpha = hp; ctx.translate(0, (1 - hp) * 12);
+  txt('Good morning,', 24, 92, 15, COL.gray, { w: 600 });
+  txt('Sam', 24, 124, 30, COL.ink, { w: 800 });
+  circle(346, 104, 22); ctx.fillStyle = COL.peach; ctx.fill(); miniDrawer(346, 106, .78);
+  ctx.restore();
+
+  // balance card
+  const bp = ez(t, 4.38, .6, Ez.out5), hit = bump(t, 8.66, .3);
+  ctx.save(); ctx.globalAlpha = bp; ctx.translate(195, 236 + (1 - bp) * 50); ctx.scale(1 + .035 * hit, 1 + .035 * hit); ctx.translate(-195, -236);
+  rr(16, 148, 358, 176, 26); ctx.fillStyle = COL.ink; ctx.fill();
+  ctx.save(); rr(16, 148, 358, 176, 26); ctx.clip();
+  circle(350, 160, 90); ctx.fillStyle = 'rgba(242,149,59,.18)'; ctx.fill();
+  circle(380, 300, 60); ctx.fillStyle = 'rgba(242,149,59,.12)'; ctx.fill();
+  ctx.restore();
+  txt('Total balance', 36, 186, 14, 'rgba(247,244,237,.62)', { w: 700 });
+  txt(rp(balanceAt(t)), 36, 236, 36, COL.cream, { w: 800 });
+  txt('Still got some.', 36, 268, 14, COL.orange, { w: 800 });
+  rr(36, 284, 128, 26, 13); ctx.fillStyle = 'rgba(111,143,114,.3)'; ctx.fill();
+  glyph('up', 52, 297, 14, '#A9D3AC', 2.6);
+  txt('12% vs last month', 64, 302, 11, '#CFE7D0', { w: 700 });
+  // sparkline
+  const sp = ez(t, 4.8, .9, Ez.inOut3);
+  const pts = [0, .35, .2, .55, .45, .75, .62, 1].map((v, i, a) => [220 + i * 20, 302 - v * 46]);
+  ctx.save(); ctx.beginPath(); ctx.rect(200, 240, 170 * sp + 20, 80); ctx.clip();
+  ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.lineWidth = 3.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = COL.orange; ctx.stroke();
+  ctx.restore();
+  if (sp > .95) { circle(360, 256, 5); ctx.fillStyle = COL.orange; ctx.fill(); }
+  ctx.restore();
+
+  // wallets
+  const wp = ez(t, 4.62, .4);
+  txt('Wallets', 24, 362, 16, COL.ink, { w: 800, alpha: wp });
+  txt('See all', 366, 362, 13, COL.gray, { w: 700, align: 'right', alpha: wp });
+  WALLETS.forEach((w, i) => {
+    const p = ez(t, 4.72 + i * .08, .5, Ez.outBack); if (p <= 0) return;
+    const x = 16 + i * 122;
+    ctx.save(); ctx.translate(x + 57, 420); ctx.scale(p, p); ctx.translate(-x - 57, -420);
+    rr(x, 378, 114, 86, 20); ctx.fillStyle = COL.white; ctx.fill();
+    iconCircle(x + 26, 404, 14, w.color, w.icon);
+    txt(w.name, x + 14, 438, 13, COL.ink, { w: 800 });
+    txt(rp(w.amt - (w.name === 'GoPay' ? 25000 * ez(t, 8.62, .5) : 0)).replace('Rp ', 'Rp'), x + 14, 455, 11, COL.gray, { w: 700 });
+    ctx.restore();
+  });
+
+  // today list (a new row slides in at the top after quick add)
+  const lp = ez(t, 4.88, .4);
+  txt('Today', 24, 500, 16, COL.ink, { w: 800, alpha: lp });
+  const ins = ez(t, 8.5, .45, Ez.out5);
+  ROWS.forEach((r, i) => {
+    const p = ez(t, 4.95 + i * .07, .5, Ez.out5); if (p <= 0) return;
+    txRow(r, 514 + i * 64 + ins * 64, p, (1 - p) * 70);
+  });
+  if (ins > 0) {
+    const hl = 1 - ez(t, 9.1, .5);
+    ctx.save(); ctx.translate(195, 538); ctx.scale(lerp(.85, 1, ins), lerp(.85, 1, ins)); ctx.translate(-195, -538);
+    txRow(NEW_ROW, 514, ins, 0, hl);
+    ctx.restore();
+  }
+
+  tabBar('home');
+  fab(t, .08 * bump(t, 6.1, .25) + .06 * bump(t, 5.85, .25) - .1 * bump(t, 6.3, .18));
+  tapRing(195, 772, t, 6.3);
+  quickSheet(t);
+  toast(t);
+}
+
+// Quick add: "lunch 25k gopay" → parsed chips → saved.
+const TYPED = 'lunch 25k gopay';
+const CHIPS = [
+  { label: 'Rp 25.000', icon: null, bg: COL.peach },
+  { label: 'Food & Drinks', icon: 'food', bg: '#FDE3CB' },
+  { label: 'GoPay', icon: 'wallet', bg: '#DCEFEC' },
+  { label: 'Today', icon: 'cal', bg: '#ECE6DA' },
+];
+const typedCount = t => Math.floor(clamp((t - 6.72) / .052, 0, TYPED.length));
+function sheetPos(t) { return ez(t, 6.4, .42, Ez.out5) - ez(t, 8.45, .3, Ez.in3); }
+function quickSheet(t) {
+  const sp = sheetPos(t); if (sp <= 0) return;
+  ctx.fillStyle = `rgba(20,14,11,${.45 * sp})`; ctx.fillRect(0, 0, 390, 844);
+  const y = 844 - 456 * sp;
+  rr(0, y, 390, 520, 30); ctx.fillStyle = COL.white; ctx.fill();
+  rr(175, y + 12, 40, 5, 3); ctx.fillStyle = 'rgba(42,29,24,.15)'; ctx.fill();
+  txt('Put something in', 24, y + 58, 22, COL.ink, { w: 800 });
+  txt('Type it like you say it', 24, y + 82, 13, COL.gray, { w: 600 });
+  // input
+  rr(16, y + 100, 358, 60, 16); ctx.fillStyle = COL.cream; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = COL.orange; ctx.stroke();
+  const n = typedCount(t), parsed = ez(t, 7.55, .3);
+  ctx.save(); ctx.font = font(20, 700); ctx.textBaseline = 'alphabetic';
+  let x = 34;
+  if (n === 0) { ctx.fillStyle = 'rgba(42,29,24,.3)'; ctx.fillText('e.g. lunch 25k gopay', x, y + 138); }
+  const segs = [['lunch ', COL.ink], ['25k', COL.deep], [' ', COL.ink], ['gopay', '#2F8577']];
+  let shown = 0;
+  for (const [s, c] of segs) {
+    const part = s.slice(0, Math.max(0, n - shown)); shown += s.length;
+    if (!part) continue;
+    const wpart = ctx.measureText(part).width;
+    if (parsed > 0 && c !== COL.ink) { rr(x - 3, y + 116, wpart + 6, 30, 7); ctx.fillStyle = c === COL.deep ? `rgba(242,149,59,${.22 * parsed})` : `rgba(62,156,142,${.2 * parsed})`; ctx.fill(); }
+    ctx.fillStyle = parsed > 0 ? c : COL.ink; ctx.fillText(part, x, y + 138); x += wpart;
+  }
+  if ((n < TYPED.length || Math.floor(t * 3) % 2 === 0) && t < 8.4) { ctx.fillStyle = COL.orange; ctx.fillRect(x + 2, y + 118, 2.5, 26); }
+  ctx.restore();
+  // chips
+  let cx = 16, cy = y + 182;
+  CHIPS.forEach((c, i) => {
+    const w = measure(c.label, 14, 800) + (c.icon ? 46 : 28);
+    if (cx + w > 374) { cx = 16; cy += 46; }
+    const p = ez(t, 7.58 + i * .08, .45, Ez.outBack);
+    if (p > 0) {
+      ctx.save(); ctx.translate(cx + w / 2, cy + 17); ctx.scale(p, p); ctx.translate(-cx - w / 2, -cy - 17);
+      rr(cx, cy, w, 36, 18); ctx.fillStyle = c.bg; ctx.fill();
+      if (c.icon) glyph(c.icon, cx + 21, cy + 18, 17, COL.ink, 2.4);
+      txt(c.label, cx + (c.icon ? 36 : 14), cy + 23, 14, COL.ink, { w: 800 });
+      ctx.restore();
+    }
+    cx += w + 8;
+  });
+  // CTA
+  const press = bump(t, 8.35, .2);
+  ctx.save(); ctx.translate(195, y + 319); ctx.scale(1 - .05 * press, 1 - .05 * press); ctx.translate(-195, -(y + 319));
+  rr(16, y + 290, 358, 58, 18); ctx.fillStyle = COL.orange; ctx.fill();
+  txt('Put something in', 195, y + 326, 17, COL.ink, { w: 800, align: 'center' });
+  ctx.restore();
+  tapRing(260, y + 319, t, 8.35);
+}
+function toast(t) {
+  const p = ez(t, 8.62, .35, Ez.outBack) - ez(t, 8.96, .22, Ez.in3); if (p <= 0) return;
+  const y = lerp(-70, 58, p);
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.25)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8;
+  rr(45, y, 300, 50, 25); ctx.fillStyle = COL.ink; ctx.fill(); ctx.restore();
+  miniDrawer(78, y + 25, .9, 1);
+  txt('Into the drawer it goes.', 104, y + 31, 15, COL.cream, { w: 800 });
+}
+
+const BUDGETS = [
+  { name: 'Food & Drinks', icon: 'food', color: COL.orange, spent: 920000, limit: 1000000 },
+  { name: 'Transport', icon: 'bus', color: COL.blue, spent: 410000, limit: 850000 },
+  { name: 'Shopping', icon: 'bag', color: COL.pink, spent: 380000, limit: 600000 },
+  { name: 'Bills', icon: 'bolt', color: COL.yellow, spent: 450000, limit: 700000 },
+];
+const SEGMENTS = [[.36, COL.orange], [.17, COL.blue], [.15, COL.pink], [.17, COL.yellow], [.15, '#B5A99A']];
+function budgetsScreen(t) {
+  ctx.fillStyle = COL.cream; ctx.fillRect(0, 0, 390, 844);
+  statusBar();
+  txt('Spent this month', 24, 82, 14, COL.gray, { w: 700 });
+  txt('October', 24, 114, 30, COL.ink, { w: 800 });
+  rr(232, 88, 142, 32, 16); ctx.fillStyle = COL.white; ctx.fill();
+  rr(280, 91, 46, 26, 13); ctx.fillStyle = COL.ink; ctx.fill();
+  txt('Wk', 256, 109, 12, COL.gray, { w: 700, align: 'center' });
+  txt('Mo', 303, 109, 12, COL.cream, { w: 800, align: 'center' });
+  txt('Yr', 350, 109, 12, COL.gray, { w: 700, align: 'center' });
+  // donut
+  const sweep = ez(t, 9.42, .85, Ez.inOut3), cx = 195, cy = 262;
+  ctx.lineWidth = 30; circle(cx, cy, 96); ctx.strokeStyle = 'rgba(42,29,24,.06)'; ctx.stroke();
+  let a0 = -Math.PI / 2;
+  for (const [frac, color] of SEGMENTS) {
+    const a1 = a0 + frac * Math.PI * 2;
+    const end = Math.min(a1, -Math.PI / 2 + sweep * Math.PI * 2);
+    if (end > a0 + .01) { ctx.beginPath(); ctx.arc(cx, cy, 96, a0 + .03, end - .03); ctx.strokeStyle = color; ctx.lineWidth = 30; ctx.stroke(); }
+    a0 = a1;
+  }
+  txt(rp(2160000 * ez(t, 9.42, .95, Ez.out3)), cx, cy + 6, 25, COL.ink, { w: 800, align: 'center' });
+  txt('of Rp 3.150.000', cx, cy + 30, 12, COL.gray, { w: 700, align: 'center' });
+  // budgets
+  txt('Budgets', 24, 412, 16, COL.ink, { w: 800 });
+  BUDGETS.forEach((b, i) => {
+    const y = 432 + i * 74, ap = ez(t, 9.7 + i * .07, .4);
+    const ratio = b.spent / b.limit, fp = ez(t, 9.85 + i * .1, .75, Ez.out5) * ratio;
+    const warn = ratio >= .9 && fp > .85;
+    const wob = warn ? Math.sin((t - 10.5) * 40) * 2.5 * bump(t, 10.45, .5) : 0;
+    ctx.save(); ctx.globalAlpha = ap; ctx.translate(wob, 0);
+    rr(16, y, 358, 64, 18); ctx.fillStyle = COL.white; ctx.fill();
+    iconCircle(44, y + 32, 16, b.color, b.icon);
+    txt(b.name, 70, y + 26, 14, COL.ink, { w: 800 });
+    txt(`${rp(b.spent * fp / ratio)} / ${rp(b.limit).replace('Rp ', '')}`, 360, y + 26, 11, COL.gray, { w: 700, align: 'right' });
+    rr(70, y + 40, 290, 9, 5); ctx.fillStyle = 'rgba(42,29,24,.07)'; ctx.fill();
+    rr(70, y + 40, Math.max(9, 290 * fp), 9, 5); ctx.fillStyle = warn ? COL.red : b.color; ctx.fill();
+    if (warn) {
+      const pp = ez(t, 10.45, .35, Ez.outBack);
+      ctx.save(); ctx.translate(166, y + 20); ctx.scale(pp, pp);
+      rr(0, -11, 92, 22, 11); ctx.fillStyle = 'rgba(201,106,74,.15)'; ctx.fill();
+      txt('92% · careful', 46, 4, 11, COL.red, { w: 800, align: 'center' });
+      ctx.restore();
+    }
+    ctx.restore();
+  });
+  tabBar('pie');
+  fab(t);
+}
+
+const GOALS = [
+  { name: 'New laptop', icon: 'laptop', color: COL.blue, p: .35 },
+  { name: 'Emergency fund', icon: 'shield', color: COL.green, p: .54 },
+  { name: 'Concert tickets', icon: 'ticket', color: COL.pink, p: .9 },
+];
+const COIN_LANDS = [11.92, 12.1, 12.28, 12.46];
+function goalsScreen(t) {
+  ctx.fillStyle = COL.cream; ctx.fillRect(0, 0, 390, 844);
+  statusBar();
+  txt('Saving up, slowly', 24, 82, 14, COL.gray, { w: 700 });
+  txt('Goals', 24, 114, 30, COL.ink, { w: 800 });
+  rr(16, 134, 358, 340, 28); ctx.fillStyle = COL.ink; ctx.fill();
+  ctx.save(); rr(16, 134, 358, 340, 28); ctx.clip(); circle(40, 150, 110); ctx.fillStyle = 'rgba(242,149,59,.14)'; ctx.fill(); ctx.restore();
+  // ring
+  const cx = 195, cy = 274, pulse = COIN_LANDS.reduce((a, c) => a + bump(t, c, .25), 0);
+  const prog = smoothGoal(t);
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 22; circle(cx, cy, 98); ctx.strokeStyle = 'rgba(247,244,237,.1)'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, 98, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(.002, prog));
+  ctx.lineWidth = 22 + 8 * pulse; ctx.strokeStyle = COL.orange; ctx.stroke();
+  glyph('plane', cx, cy - 46, 26, COL.orange, 2.4);
+  txt(`${Math.round(prog * 100)}%`, cx, cy + 16, 46, COL.cream, { w: 800, align: 'center' });
+  txt('Bali trip', cx, cy + 42, 14, 'rgba(247,244,237,.7)', { w: 700, align: 'center' });
+  txt(rp(Math.round(10000 * prog) * 1000), 36, 418, 20, COL.cream, { w: 800 });
+  txt('of Rp 10.000.000', 36, 440, 12, 'rgba(247,244,237,.6)', { w: 700 });
+  rr(216, 410, 140, 30, 15); ctx.fillStyle = 'rgba(242,149,59,.2)'; ctx.fill();
+  txt('Rp 700rb / month', 286, 430, 12, COL.orange, { w: 800, align: 'center' });
+  // other goals
+  GOALS.forEach((g, i) => {
+    const y = 494 + i * 72, ap = ez(t, 11.7 + i * .07, .4), fp = ez(t, 11.8 + i * .08, .7, Ez.out5) * g.p;
+    ctx.save(); ctx.globalAlpha = ap;
+    rr(16, y, 358, 62, 18); ctx.fillStyle = COL.white; ctx.fill();
+    iconCircle(44, y + 31, 16, g.color, g.icon);
+    txt(g.name, 70, y + 26, 14, COL.ink, { w: 800 });
+    txt(`${Math.round(fp * 100)}%`, 360, y + 26, 12, COL.gray, { w: 800, align: 'right' });
+    rr(70, y + 39, 290, 8, 4); ctx.fillStyle = 'rgba(42,29,24,.07)'; ctx.fill();
+    rr(70, y + 39, Math.max(8, 290 * fp), 8, 4); ctx.fillStyle = g.color; ctx.fill();
+    ctx.restore();
+  });
+  tabBar('target');
+  fab(t);
+}
+// Ring progress: grows in, then steps up with each coin that lands.
+function smoothGoal(t) {
+  let v = .44 * ez(t, 11.55, .5, Ez.out3);
+  COIN_LANDS.forEach(c => { v += .07 * ez(t, c, .3, Ez.outBack); });
+  return v;
+}
+
+// =====================================================================================
+//  The phone
+// =====================================================================================
+function phoneState(t) {
+  const enter = ez(t, 3.95, .75, Ez.out5);
+  let x = lerp(2550, 1240, enter), y = 540, s = .92;
+  let tilt = lerp(.55, -.035, enter), rotY = lerp(-1.15, -.16, enter);
+  y += Math.sin(t * 1.7) * 7; tilt += Math.sin(t * 1.1) * .012;
+  const z = ez(t, 6.5, .62, Ez.inOut3) - ez(t, 8.42, .5, Ez.inOut3);
+  s *= 1 + .3 * z; y -= 122 * z; x -= 40 * z; rotY = lerp(rotY, -.02, z); tilt = lerp(tilt, 0, z);
+  const f1 = ez(t, 9.0, .5, Ez.inOut3), f2 = ez(t, 11.4, .5, Ez.inOut3);
+  rotY += Math.PI * (f1 + f2);
+  s *= 1 - .07 * (Math.sin(Math.PI * f1) + Math.sin(Math.PI * f2));
+  const ex = ez(t, 12.95, .5, Ez.in3);
+  y += 1250 * ex; tilt += .45 * ex; x -= 160 * ex;
+  return { x, y, s, tilt, rotY, f1, f2 };
+}
+// Screen point → canvas point (rotation ignored: used to aim things at the phone).
+const screenToWorld = (ph, sx, sy) => [ph.x + (sx - 195) * ph.s, ph.y + (sy - 422) * ph.s];
+
+function drawPhone(t, ph) {
+  if (ph.x > 2450 || ph.y > 1700) return;
+  const c = Math.cos(ph.rotY), sn = Math.sin(ph.rotY);
+  ctx.save();
+  // ground shadow
+  ctx.save(); ctx.translate(ph.x, ph.y + 470 * ph.s); ctx.scale(Math.abs(c) * .9 + .1, 1);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 260 * ph.s);
+  g.addColorStop(0, 'rgba(20,12,8,.28)'); g.addColorStop(1, 'rgba(20,12,8,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, 260 * ph.s, 40 * ph.s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  ctx.translate(ph.x, ph.y); ctx.rotate(ph.tilt);
+  ctx.transform(c, sn * .16, 0, 1, 0, 0); ctx.scale(ph.s, ph.s);
+  // body + edge thickness (fake depth on the side that turns away)
+  ctx.save(); ctx.shadowColor = 'rgba(20,12,8,.4)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 26;
+  rr(-211, -438, 422, 876, 68); ctx.fillStyle = '#16100D'; ctx.fill(); ctx.restore();
+  rr(-211, -438, 422, 876, 68); ctx.lineWidth = 4; ctx.strokeStyle = '#4A3A31'; ctx.stroke();
+  ctx.fillStyle = '#3A2C25'; ctx.fillRect(-215, -250, 4, 70); ctx.fillRect(-215, -160, 4, 70); ctx.fillRect(211, -200, 4, 110);
+  // screen
+  ctx.save(); rr(-196, -423, 392, 846, 54); ctx.clip(); ctx.translate(-195, -422);
+  if (c < 0) { ctx.translate(390, 0); ctx.scale(-1, 1); }
+  if (c >= 0) (ph.f2 > .5 ? goalsScreen : homeScreen)(t); else budgetsScreen(t);
+  // glass glare that sweeps on each new screen
+  for (const g0 of [4.2, 9.25, 11.65]) {
+    const p = pr(t, g0, .9); if (p <= 0 || p >= 1) continue;
+    const gx = lerp(-300, 700, Ez.inOut3(p));
+    const gr = ctx.createLinearGradient(gx - 120, 0, gx + 120, 0);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.28)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.save(); ctx.transform(1, 0, -.4, 1, 0, 0); ctx.fillStyle = gr; ctx.fillRect(gx - 140, 0, 280, 844); ctx.restore();
+  }
+  ctx.restore();
+  rr(-62, -410, 124, 36, 18); ctx.fillStyle = '#0B0807'; ctx.fill();
+  ctx.restore();
+}
+
+// =====================================================================================
+//  Scenes
+// =====================================================================================
+const HEADS = [
+  { t0: 4.3, t1: 6.05, label: '01 — ALL YOUR WALLETS', lines: ['All your money.', 'One little drawer.'], body: 'Cash, bank and e-wallets, counted for you.' },
+  { t0: 6.2, t1: 8.85, label: '02 — QUICK ADD', lines: ['Type it like', 'you say it.'], body: '“lunch 25k gopay” — saved in one tap.' },
+  { t0: 9.3, t1: 11.2, label: '03 — INSIGHTS', lines: ['Know where', 'it all goes.'], body: 'Budgets that nudge, not nag.', dark: true },
+  { t0: 11.6, t1: 12.82, label: '04 — GOALS', lines: ['Save for', 'what matters.'], body: 'Watch it fill up, coin by coin.' },
+];
+function headline(h, t) {
+  if (t < h.t0 - .05 || t > h.t1 + .7) return;
+  const ink = h.dark ? COL.cream : COL.ink, sub = h.dark ? 'rgba(247,244,237,.62)' : COL.gray;
+  const x = 150, y0 = 470;
+  // label + rule
+  const lp = ez(t, h.t0, .45, Ez.out5), lo = ez(t, h.t1, .3, Ez.in3);
+  ctx.fillStyle = COL.orange; ctx.fillRect(x, y0 - 166, 56 * (lp - lo), 5);
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 70, y0 - 196, 700, 44); ctx.clip();
+  txt(h.label, x + 76, y0 - 157 + (1 - lp) * 40 - lo * 40, 22, COL.orange, { w: 800, ls: 4 });
+  ctx.restore();
+  // lines
+  h.lines.forEach((line, i) => {
+    const pIn = ez(t, h.t0 + .06 + i * .09, .6, Ez.out5), pOut = ez(t, h.t1 + i * .05, .35, Ez.in3);
+    const y = y0 + i * 108, size = 98, tw = measure(line, size, 800);
+    ctx.save(); ctx.beginPath(); ctx.rect(x - 30, y - size * 1.02, tw + 80, size * 1.38); ctx.clip();
+    const yy = y + (1 - pIn) * size * 1.25 - pOut * size * 1.3;
+    if (i === 1) {
+      const hp = ez(t, h.t0 + .5, .5, Ez.inOut3) * (1 - pOut);
+      ctx.fillStyle = h.dark ? 'rgba(242,149,59,.85)' : COL.orange;
+      ctx.fillRect(x - 10, yy - 38, (tw + 20) * hp, 42);
+    }
+    txt(line, x, yy, size, ink, { w: 800 });
+    ctx.restore();
+  });
+  const bp = ez(t, h.t0 + .4, .5, Ez.out5), bo = ez(t, h.t1, .3, Ez.in3);
+  txt(h.body, x, y0 + 216 + (1 - bp) * 20, 30, sub, { w: 600, alpha: bp * (1 - bo) });
+}
+
+// ---- 0–2s: the hook
+const HOOK_WORDS = [
+  ['coffee.', -.07, '-Rp 32.000', [960, 560]],
+  ['grab.', .06, '-Rp 18.000', [880, 520]],
+  ['shopee.', -.04, '-Rp 129.000', [1040, 600]],
+  ['snacks.', .08, '-Rp 15.000', [920, 540]],
+  ['again?', -.03, '-Rp 45.000', [960, 560]],
+];
+const HOOK_PARTS = Array.from({ length: 34 }, (_, i) => {
+  const r = rng(100 + i);
+  return { coin: r() < .45, x: r() * W, t0: r() * 1.6, vy: 250 + r() * 500, vx: (r() - .5) * 300, rot: r() * 6, vr: (r() - .5) * 8, s: .7 + r() * .7, amt: ['-25k', '-18k', '-129k', '-45k', '-9k'][i % 5] };
+});
+const wipeOrange = t => 2300 * ez(t, 1.84, .26, Ez.in2);
+const wipeCream = t => 2300 * ez(t, 2.0, .32, Ez.inOut3);
+function hookScene(t) {
+  ctx.save();
+  if (t > 1.84) { const p = new Path2D(); p.rect(-500, -500, W + 1000, H + 1000); p.arc(W / 2, H / 2, wipeOrange(t), 0, Math.PI * 2); ctx.clip(p, 'evenodd'); }
+  // falling bills & coins
+  for (const p of HOOK_PARTS) {
+    const dt = t - p.t0; if (dt < 0) continue;
+    const y = -140 + p.vy * dt + 520 * dt * dt, x = p.x + p.vx * dt;
+    if (y > H + 200) continue;
+    ctx.save(); ctx.globalAlpha = .85;
+    if (p.coin) drawCoin(x, y, 30 * p.s, p.rot + p.vr * dt * 1.5, { rot: .2 });
+    else drawReceipt(x, y, p.s, p.rot + p.vr * dt * .3, p.amt);
+    ctx.restore();
+  }
+  // rapid-fire words
+  HOOK_WORDS.forEach(([w, rot, amt, [x, y]], i) => {
+    const t0 = i * .25, t1 = i < 4 ? t0 + .25 : 1.25;
+    if (t < t0 || t >= t1) return;
+    const p = ez(t, t0, .2, Ez.outBackBig), s = lerp(1.9, 1, p) * (1 + (t - t0) * .08);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(s, s);
+    txt(w, 10, 12, 240, COL.orange, { align: 'center', base: 'middle', alpha: .9 });
+    txt(w, 0, 0, 240, COL.cream, { align: 'center', base: 'middle' });
+    const ap = ez(t, t0 + .04, .2, Ez.outBack);
+    ctx.translate(0, 140 - 30 * pr(t, t0, .3)); ctx.scale(ap, ap); ctx.rotate(-rot * 2);
+    const aw = measure(amt, 40, 800) + 44;
+    rr(-aw / 2, -30, aw, 60, 30); ctx.fillStyle = COL.red; ctx.fill();
+    txt(amt, 0, 14, 40, COL.cream, { align: 'center' });
+    ctx.restore();
+  });
+  // the slam
+  [['WHERE DID', 1.25, 445, COL.cream], ['IT ALL GO?', 1.45, 640, COL.orange]].forEach(([s, t0, y, c]) => {
+    if (t < t0) return;
+    const p = ez(t, t0, .17, Ez.out3), drift = 1 + (t - t0) * .05;
+    for (let k = 3; k >= 1; k--) {
+      const ks = lerp(2.6, 1, p) * (1 + k * .09 * (1 - p)) * drift;
+      ctx.save(); ctx.translate(960, y); ctx.scale(ks, ks); txt(s, 0, 0, 176, c, { align: 'center', base: 'middle', alpha: .18 * (1 - p) }); ctx.restore();
+    }
+    ctx.save(); ctx.translate(960, y); const ks = lerp(2.6, 1, p) * drift; ctx.scale(ks, ks);
+    txt(s, 0, 0, 176, c, { align: 'center', base: 'middle', alpha: p });
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+// ---- 2–4s: the drawer swallows the mess, the wordmark lands
+const SUCK = Array.from({ length: 13 }, (_, i) => {
+  const r = rng(300 + i), side = i % 4;
+  const x = side === 0 ? -120 : side === 1 ? W + 120 : r() * W, y = side === 2 ? -150 : side === 3 ? H + 120 : r() * H;
+  return { x, y, coin: i % 3 !== 0, rot: r() * 6, delay: i * .02 };
+});
+function introDrawer(t) {
+  const open = ez(t, 2.3, .2, Ez.out3) * (1 - ez(t, 2.98, .12, Ez.in3));
+  const squash = bump(t, 3.08, .3);
+  return {
+    x: lerp(960, 600, ez(t, 3.25, .5, Ez.inOut3)), y: lerp(1350, 590, ez(t, 2.04, .5, Ez.outBack)),
+    s: lerp(1.08, .8, ez(t, 3.25, .5, Ez.inOut3)), sx: 1 + .08 * squash, sy: 1 - .12 * squash,
+    k: open, mouth: ez(t, 2.25, .15) * (1 - ez(t, 2.95, .1)), happy: ez(t, 3.1, .1), sparks: ez(t, 3.18, .3, Ez.outBack),
+    lx: 0, ly: -10 * ez(t, 2.2, .2) * (1 - ez(t, 2.9, .1)),
+  };
+}
+function introScene(t) {
+  ctx.save();
+  if (t < 2.32) { ctx.beginPath(); ctx.arc(W / 2, H / 2, wipeCream(t), 0, Math.PI * 2); ctx.clip(); }
+  ctx.translate(-2700 * ez(t, 3.85, .28, Ez.in3), 0);
+  const st = introDrawer(t);
+  drawerBack(st);
+  // the mess flies in
+  const target = trayCenter(st);
+  ctx.save(); ctx.clip(drawerClip(st), 'evenodd');
+  for (const p of SUCK) {
+    const q = ez(t, 2.2 + p.delay, .5, Ez.inOut3); if (q <= 0) continue;
+    const cx = lerp(p.x, target[0], .5), cy = Math.min(p.y, target[1]) - 320;
+    const x = (1 - q) ** 2 * p.x + 2 * (1 - q) * q * cx + q * q * target[0];
+    const y = (1 - q) ** 2 * p.y + 2 * (1 - q) * q * cy + q * q * (target[1] + 70);
+    const s = lerp(1.1, .5, q);
+    if (p.coin) drawCoin(x, y, 34 * s, p.rot + q * 14);
+    else drawReceipt(x, y, s, p.rot + q * 8);
+  }
+  ctx.restore();
+  drawerFront(st);
+  if (t >= 3.3) {
+    drawWordmark(1280, 520, .6, t, 3.32);
+    const tp = ez(t, 3.6, .45, Ez.out5);
+    ctx.save(); ctx.beginPath(); ctx.rect(900, 610, 800, 70); ctx.clip();
+    txt('Your money, in its place.', 1280, 660 + (1 - tp) * 60, 40, COL.gray, { w: 700, align: 'center' });
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+// ---- 4–13s: the app
+function appScene(t) {
+  const ph = phoneState(t);
+  HEADS.forEach(h => headline(h, t));
+  const phoneC = [ph.x, ph.y];
+
+  // 01: wallet cards pop out of the phone
+  const homeCards = [
+    { w: WALLETS[0], to: [1680, 300], t0: 4.9, rot: .06 },
+    { w: WALLETS[2], to: [1700, 740], t0: 5.02, rot: -.05 },
+    { w: WALLETS[1], to: [1000, 905], t0: 5.14, rot: -.04 },
+  ];
+  homeCards.forEach(({ w, to, t0, rot }, i) => {
+    const p = ez(t, t0, .7, Ez.outBack), back = ez(t, 5.9 + i * .05, .3, Ez.in3);
+    if (p <= 0 || back >= 1) return;
+    const x = lerp(lerp(phoneC[0], to[0], p), phoneC[0], back), y = lerp(lerp(phoneC[1], to[1], p), phoneC[1], back) + Math.sin(t * 2 + i) * 8;
+    floatCard(x, y, 300, 118, rot * (1 - back), lerp(.3, 1, clamp(p)) * (1 - back * .7), clamp(p * 3) * (1 - back), (l, tp) => {
+      iconCircle(l + 46, tp + 59, 24, w.color, w.icon);
+      txt(w.name, l + 84, tp + 50, 20, COL.gray, { w: 700 });
+      txt(rp(w.amt), l + 84, tp + 82, 28, COL.ink, { w: 800 });
+    });
+  });
+
+  // 02: the parsed chips explain themselves beside the phone
+  const parse = [
+    ['AMOUNT', 'Rp 25.000', null, COL.peach, [1690, 330]],
+    ['CATEGORY', 'Food & Drinks', 'food', '#FDE3CB', [1720, 470]],
+    ['WALLET', 'GoPay', 'wallet', '#DCEFEC', [1680, 610]],
+    ['WHEN', 'Today', 'cal', '#ECE6DA', [1710, 750]],
+  ];
+  parse.forEach(([label, value, icon, bg, to], i) => {
+    const p = ez(t, 7.6 + i * .09, .55, Ez.outBack), back = ez(t, 8.3, .25, Ez.in3);
+    if (p <= 0 || back >= 1) return;
+    const cta = screenToWorld(ph, 260, 844 - 456 + 319);
+    const x = lerp(to[0], cta[0], back), y = lerp(to[1], cta[1], back) + Math.sin(t * 2.4 + i) * 6;
+    const w = measure(value, 30, 800) + (icon ? 110 : 64);
+    floatCard(x, y, w, 96, (i % 2 ? .03 : -.03) * (1 - back), lerp(.4, 1, clamp(p)) * (1 - back * .8), clamp(p * 3), (l, tp) => {
+      txt(label, l + 26, tp + 32, 14, COL.gray, { w: 800, ls: 3 });
+      if (icon) { circle(l + 44, tp + 64, 20); ctx.fillStyle = bg; ctx.fill(); glyph(icon, l + 44, tp + 64, 22, COL.ink, 2.4); }
+      txt(value, l + (icon ? 76 : 26), tp + 75, 30, COL.ink, { w: 800 });
+    });
+  });
+
+  // 03: an insight + a warning chip
+  {
+    const p = ez(t, 10.42, .55, Ez.outBack), o = ez(t, 11.15, .3, Ez.in3);
+    floatCard(1690, 420, 320, 112, -.04, lerp(.4, 1, clamp(p)) * (1 - o * .5), clamp(p * 3) * (1 - o), (l, tp) => {
+      iconCircle(l + 48, tp + 56, 26, COL.red, 'food');
+      txt('Food & Drinks', l + 90, tp + 48, 20, COL.gray, { w: 700 });
+      txt('92% used', l + 90, tp + 80, 30, COL.red, { w: 800 });
+    });
+    const q = ez(t, 10.6, .55, Ez.outBack);
+    floatCard(1640, 790, 470, 150, .03, lerp(.4, 1, clamp(q)) * (1 - o * .5), clamp(q * 3) * (1 - o), (l, tp) => {
+      ctx.save(); ctx.translate(l + 70, tp + 78); ctx.scale(.9, .9); miniDrawer(0, 0, 2.2, 1); ctx.restore();
+      txt('You spent 18% less', l + 136, tp + 64, 28, COL.ink, { w: 800 });
+      txt('than last month. Nice.', l + 136, tp + 100, 26, COL.gray, { w: 700 });
+      glyph('spark', l + 444, tp + 30, 26, COL.orange);
+    });
+  }
+
+  drawPhone(t, ph);
+
+  // 02: a coin flies from the button into the balance card
+  {
+    const q = pr(t, 8.4, .3);
+    if (q > 0 && q < 1) {
+      const a = screenToWorld(ph, 195, 844 - 456 * sheetPos(t) + 319), b = screenToWorld(ph, 300, 215);
+      const e = Ez.inOut3(q);
+      drawCoin(lerp(a[0], b[0], e), lerp(a[1], b[1], e) - Math.sin(Math.PI * e) * 160, 34 * lerp(1, .6, e), q * 14, { face: q > .5 });
+    }
+  }
+  // 04: coins drop into the goal ring
+  COIN_LANDS.forEach((land, i) => {
+    const q = pr(t, land - .42, .42);
+    const ring = screenToWorld(ph, 195, 274);
+    if (q > 0 && q < 1) {
+      const x = ring[0] + (i % 2 ? 90 : -90) * (1 - q), y = lerp(-120, ring[1], Ez.in2(q));
+      drawCoin(x, y, 42 * lerp(1.1, .55, q), q * 16, { face: true });
+    }
+    const pop = pr(t, land, .7);
+    if (pop > 0 && pop < 1) {
+      const x = ring[0] + 360 + (i % 2) * 70, y = ring[1] - 150 + i * 95 - Ez.out3(pop) * 70;
+      ctx.save(); ctx.globalAlpha = 1 - Ez.in2(pop);
+      const s = Ez.outBack(clamp(pop * 3));
+      ctx.translate(x, y); ctx.scale(s, s);
+      rr(-95, -30, 190, 60, 30); ctx.fillStyle = COL.ink; ctx.fill();
+      txt('+Rp 700.000', 0, 10, 26, COL.orange, { align: 'center' });
+      ctx.restore();
+    }
+  });
+  if (t > 12.5 && t < 14.2) { const ring = screenToWorld(ph, 195, 274); confetti(t, 12.55, ring[0], ring[1], 46, 5, { speed: 1100 }); }
+
+  // brand bug in the corner
+  const bug = ez(t, 4.4, .5) * (1 - ez(t, 12.9, .3));
+  if (bug > 0) {
+    ctx.save(); ctx.globalAlpha = bug;
+    const dark = t > 9.15 && t < 11.62;
+    miniDrawer(170, 990, 1.4, 0);
+    txt('droin', 206, 1002, 34, dark ? COL.cream : COL.ink, { w: 800 });
+    ctx.restore();
+  }
+}
+
+// ---- 13–15s: end card
+const RAIN = Array.from({ length: 12 }, (_, i) => { const r = rng(500 + i); return { dx: (r() - .5) * 160, t0: 13.4 + i * .018, spin: r() * 6 }; });
+function outroDrawer(t) {
+  const squash = bump(t, 14.12, .3) + .6 * bump(t, 13.55, .25);
+  return {
+    x: 640, y: lerp(1400, 600, ez(t, 13.12, .55, Ez.outBack)), s: .95, sx: 1 + .07 * squash, sy: 1 - .11 * squash,
+    k: ez(t, 13.42, .18) * (1 - ez(t, 13.98, .12, Ez.in3)),
+    mouth: ez(t, 13.4, .12) * (1 - ez(t, 13.98, .1)), happy: ez(t, 14.1, .08), sparks: ez(t, 14.22, .3, Ez.outBack),
+    ly: -12 * ez(t, 13.35, .2) * (1 - ez(t, 13.98, .1)),
+  };
+}
+function outroScene(t) {
+  if (t < 13.05) return;
+  const st = outroDrawer(t);
+  drawerBack(st);
+  const target = trayCenter(st);
+  ctx.save(); ctx.clip(drawerClip(st), 'evenodd');
+  for (const c of RAIN) {
+    const q = pr(t, c.t0, .38); if (q <= 0 || q >= 1) continue;
+    drawCoin(target[0] + c.dx * (1 - q), lerp(-70, target[1] + 90, Ez.in2(q)), 40, c.spin + q * 18, { face: true });
+  }
+  ctx.restore();
+  drawerFront(st);
+  confetti(t, 14.14, target[0], target[1] - 60, 60, 9, { speed: 1300 });
+  drawWordmark(1280, 470, .56, t, 14.15);
+  const tp = ez(t, 14.42, .5, Ez.out5);
+  ctx.save(); ctx.beginPath(); ctx.rect(880, 560, 820, 80); ctx.clip();
+  txt('Your money, in its place.', 1280, 616 + (1 - tp) * 70, 46, COL.ink, { w: 800, align: 'center' });
+  ctx.restore();
+  const cp = ez(t, 14.58, .45, Ez.outBack);
+  if (cp > 0) {
+    ctx.save(); ctx.translate(1280, 724); ctx.scale(cp, cp);
+    ctx.save(); ctx.shadowColor = 'rgba(242,149,59,.5)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10;
+    rr(-170, -40, 340, 80, 40); ctx.fillStyle = COL.orange; ctx.fill(); ctx.restore();
+    txt('Download free', 0, 12, 32, COL.ink, { align: 'center' });
+    ctx.restore();
+    txt('iOS · Android', 1280, 806, 22, COL.gray, { w: 700, align: 'center', alpha: ez(t, 14.7, .3) });
+  }
+}
+
+// =====================================================================================
+//  Background, camera and finishing
+// =====================================================================================
+const IMPACTS = [[0, .5], [.25, .5], [.5, .5], [.75, .5], [1.0, .7], [1.25, 1.5], [1.45, 1.3], [2.05, .9], [3.08, .6], [13.55, .4], [14.12, .8]];
+function shake(t) {
+  let x = 0, y = 0;
+  IMPACTS.forEach(([ti, a], i) => {
+    const d = t - ti; if (d < 0 || d > .5) return;
+    const k = a * 16 * Math.exp(-d * 11);
+    x += Math.sin(d * 75 + i) * k; y += Math.cos(d * 63 + i * 2) * k;
+  });
+  return [x, y];
+}
+function beatZoom(t) {
+  if (t < 2 || t > 13) return 1;
+  const b = Math.floor((t - 2) / .5) * .5 + 2;
+  return 1 + .007 * Math.exp(-(t - b) * 9);
+}
+function background(t) {
+  ctx.fillStyle = t < 2.32 ? COL.ink2 : COL.cream; ctx.fillRect(0, 0, W, H);
+  if (t >= 1.84 && t < 2.32) {
+    circle(W / 2, H / 2, wipeOrange(t)); ctx.fillStyle = COL.orange; ctx.fill();
+    circle(W / 2, H / 2, wipeCream(t)); ctx.fillStyle = COL.cream; ctx.fill();
+  }
+  if (t >= 9.0 && t < 11.95) {
+    circle(1240, 540, 2400 * ez(t, 9.0, .5, Ez.inOut3)); ctx.fillStyle = COL.ink; ctx.fill();
+    if (t >= 11.4) { circle(1240, 540, 2400 * ez(t, 11.4, .5, Ez.inOut3)); ctx.fillStyle = COL.cream; ctx.fill(); }
+  }
+  // soft glows + drifting dot grid
+  const dark = t < 2.0 || (t > 9.3 && t < 11.6);
+  for (const [bx, by, br, sp] of [[300, 200, 520, .3], [1650, 880, 620, .22], [1500, 150, 380, .4]]) {
+    const x = bx + Math.sin(t * sp) * 80, y = by + Math.cos(t * sp * 1.3) * 60;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, br);
+    g.addColorStop(0, dark ? 'rgba(242,149,59,.16)' : 'rgba(242,149,59,.13)'); g.addColorStop(1, 'rgba(242,149,59,0)');
+    ctx.fillStyle = g; ctx.fillRect(x - br, y - br, br * 2, br * 2);
+  }
+  ctx.fillStyle = dark ? 'rgba(247,244,237,.06)' : 'rgba(42,29,24,.06)';
+  const off = (t * 18) % 48;
+  for (let gx = -48; gx < W + 48; gx += 48) for (let gy = -48; gy < H + 48; gy += 48) ctx.fillRect(gx + off, gy + off * .5, 3, 3);
+}
+// Film grain: one noise tile, offset every frame.
+const grain = document.createElement('canvas'); grain.width = grain.height = 256;
+{ const g = grain.getContext('2d'), img = g.createImageData(256, 256), r = rng(1);
+  for (let i = 0; i < img.data.length; i += 4) { const v = r() * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+  g.putImageData(img, 0, 0); }
+let grainPattern = null;
+function finishing(t) {
+  // whip-pan streaks
+  const wp = pr(t, 3.82, .4);
+  if (wp > 0 && wp < 1) {
+    const a = Math.sin(Math.PI * wp);
+    const r = rng(77);
+    for (let i = 0; i < 40; i++) {
+      const y = r() * H, len = 400 + r() * 1400, x = ((r() * 3000 - wp * 6000) % 3000 + 3000) % 3000 - 600;
+      ctx.fillStyle = i % 3 ? `rgba(242,149,59,${.35 * a})` : `rgba(42,29,24,${.25 * a})`;
+      ctx.fillRect(x, y, len, 2 + r() * 6);
+    }
+  }
+  // flashes on the big hits
+  for (const [ft, c] of [[2.04, '255,253,248'], [1.25, '242,149,59']]) {
+    const p = pr(t, ft, .22); if (p > 0 && p < 1) { ctx.fillStyle = `rgba(${c},${.32 * (1 - p)})`; ctx.fillRect(0, 0, W, H); }
+  }
+  // vignette
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * .45, W / 2, H / 2, H * 1.05);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.22)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  // grain
+  grainPattern ||= ctx.createPattern(grain, 'repeat');
+  const r = rng(Math.floor(t * 24));
+  ctx.save(); ctx.globalAlpha = .045; ctx.translate(-r() * 256, -r() * 256); ctx.fillStyle = grainPattern; ctx.fillRect(0, 0, W + 256, H + 256); ctx.restore();
+}
+
+function renderFrame(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  background(t);
+  ctx.save();
+  const [sx, sy] = shake(t); ctx.translate(sx, sy);
+  const bz = beatZoom(t); ctx.translate(W / 2, H / 2); ctx.scale(bz, bz); ctx.translate(-W / 2, -H / 2);
+  if (t < 2.32) hookScene(t);
+  if (t >= 1.95 && t < 4.25) introScene(t);
+  if (t >= 3.9 && t < 13.7) appScene(t);
+  if (t >= 12.9) outroScene(t);
+  ctx.restore();
+  finishing(t);
+}
+
+// =====================================================================================
+//  Sound: synthesized, scheduled from one event list (live and for export)
+// =====================================================================================
+const NOTE = { C2: 65.41, G1: 49.0, A1: 55.0, F1: 43.65, C5: 523.25, E5: 659.25, G5: 783.99, B4: 493.88, D5: 587.33, A4: 440, F5: 698.46, C6: 1046.5 };
+const CHORDS = [['C2', ['C5', 'E5', 'G5']], ['G1', ['B4', 'D5', 'G5']], ['A1', ['A4', 'C5', 'E5']], ['F1', ['A4', 'C5', 'F5']], ['C2', ['C5', 'E5', 'G5']], ['G1', ['B4', 'D5', 'G5']]];
+function buildEvents() {
+  const ev = [];
+  const e = (t, fn, ...a) => ev.push([t, fn, ...a]);
+  // hook
+  e(0, 'riser', 1.84, .9);
+  [0, .25, .5, .75, 1.0].forEach((t, i) => { e(t, 'hit', 1 + i * .1); e(t, 'pop', 300 + i * 70, .6); });
+  e(1.25, 'boom', 1); e(1.45, 'boom', .8); e(1.25, 'clap', 1.2); e(1.45, 'clap', 1.2);
+  e(1.78, 'whoosh', .32, 1.1);
+  // music: 2.0 → 14.0
+  for (let bar = 0; bar < 6; bar++) {
+    const t0 = 2 + bar * 2, [root, chord] = CHORDS[bar];
+    e(t0, 'pad', chord.map(n => NOTE[n] / 2), 2, .8);
+    for (let b = 0; b < 4; b++) {
+      const tb = t0 + b * .5;
+      if (!(tb >= 12.5 && tb < 13)) e(tb, 'kick', 1);
+      if (b % 2 === 1) e(tb, 'clap', .8);
+      e(tb + .25, 'hat', 1); e(tb, 'hat', .5);
+      e(tb, 'bass', NOTE[root], .22, 1); e(tb + .25, 'bass', NOTE[root] * 2, .2, .8);
+      chord.forEach((n, k) => { if ((b + k) % 2 === 0) e(tb + .25 + k * .0, 'pluck', NOTE[n] * (b === 3 && k === 2 ? 2 : 1), .7); });
+      if (bar >= 2) e(tb + .125, 'hat', .35), e(tb + .375, 'hat', .35);
+    }
+  }
+  e(12.5, 'riser', .5, .6);
+  e(14, 'pad', [NOTE.C5 / 2, NOTE.E5 / 2, NOTE.G5 / 2, NOTE.C5], 1.4, 1.1); e(14, 'kick', 1.2); e(14, 'bass', NOTE.C2, 1.2, 1);
+  // sound effects
+  e(2.04, 'boom', .7); e(2.3, 'pop', 420, .8); e(3.08, 'thunk', 1); e(3.2, 'chime', .8);
+  [3.32, 3.38, 3.43, 3.49, 3.54].forEach((t, i) => e(t, 'pop', 500 + i * 90, .7));
+  e(3.82, 'whoosh', .36, 1.2);
+  [4.72, 4.8, 4.88].forEach((t, i) => e(t, 'pop', 600 + i * 120, .7));
+  [4.9, 5.02, 5.14].forEach((t, i) => e(t, 'pop', 820 + i * 100, .6));
+  [4.95, 5.02, 5.09, 5.16].forEach(t => e(t, 'click', .5));
+  e(5.9, 'whoosh', .3, .5); e(6.3, 'tap', 1); e(6.4, 'whoosh', .3, .5);
+  for (let i = 0; i < TYPED.length; i++) e(6.72 + i * .052 + .052, 'click', .9);
+  [7.58, 7.66, 7.74, 7.82].forEach((t, i) => e(t, 'pop', 700 + i * 110, .8));
+  [7.6, 7.69, 7.78, 7.87].forEach((t, i) => e(t, 'pop', 900 + i * 90, .5));
+  e(8.3, 'whoosh', .25, .5); e(8.35, 'tap', 1); e(8.66, 'ding', 1); e(8.65, 'pop', 520, .6);
+  e(8.98, 'whoosh', .45, 1.1); e(9.42, 'riser', .8, .35);
+  [9.85, 9.95, 10.05, 10.15].forEach((t, i) => e(t, 'pop', 520 + i * 80, .6));
+  e(10.45, 'pop', 300, 1); e(10.42, 'pop', 880, .8); e(10.6, 'chime', .7);
+  e(11.38, 'whoosh', .45, 1.1);
+  COIN_LANDS.forEach((t, i) => e(t, 'ding', .8 + i * .08));
+  e(12.55, 'chime', 1);
+  e(12.95, 'whoosh', .4, 1);
+  e(13.4, 'pop', 400, .8);
+  RAIN.forEach((c, i) => e(c.t0 + .34, 'ding', .3 + (i % 3) * .08));
+  e(14.12, 'thunk', 1.2); e(14.15, 'chime', 1.2); e(14.58, 'pop', 660, .9);
+  return ev.sort((a, b) => a[0] - b[0]);
+}
+const EVENTS = buildEvents();
+
+function makeSynth(ac, out) {
+  const noise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+  { const d = noise.getChannelData(0), r = rng(9); for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1; }
+  const env = (g, t, a, peak, d) => { g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + a + d); };
+  const N = (t, dur) => { const s = ac.createBufferSource(); s.buffer = noise; s.start(t, (t * 1.37) % 1.5); s.stop(t + dur); return s; };
+  const osc = (type, f, t, dur) => { const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t); o.start(t); o.stop(t + dur); return o; };
+  const gain = () => ac.createGain();
+  const filt = (type, f, q = 1) => { const b = ac.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; return b; };
+  const S = {
+    kick(t, v = 1) { const o = osc('sine', 165, t, .45); o.frequency.exponentialRampToValueAtTime(42, t + .14); const g = gain(); env(g, t, .003, .9 * v, .34); o.connect(g).connect(out); },
+    hit(t, v = 1) { S.kick(t, .8 * v); const s = N(t, .2), f = filt('bandpass', 900, .7), g = gain(); env(g, t, .002, .35 * v, .14); s.connect(f).connect(g).connect(out); },
+    clap(t, v = 1) { for (const d of [0, .012, .025]) { const s = N(t + d, .22), f = filt('bandpass', 1500, .9), g = gain(); env(g, t + d, .002, .32 * v, .15); s.connect(f).connect(g).connect(out); } },
+    hat(t, v = 1) { const s = N(t, .07), f = filt('highpass', 7800), g = gain(); env(g, t, .001, .12 * v, .04); s.connect(f).connect(g).connect(out); },
+    bass(t, f, dur, v = 1) { const o = osc('sawtooth', f, t, dur + .05), lp = filt('lowpass', 900, 5); lp.frequency.setValueAtTime(1100, t); lp.frequency.exponentialRampToValueAtTime(200, t + dur); const g = gain(); env(g, t, .006, .2 * v, dur); o.connect(lp).connect(g).connect(out); },
+    pluck(t, f, v = 1, dur = .32) { const g = gain(); env(g, t, .003, .075 * v, dur); osc('triangle', f, t, dur + .05).connect(g); osc('sine', f * 2, t, dur + .05).connect(g); g.connect(out); },
+    pad(t, freqs, dur, v = 1) {
+      const lp = filt('lowpass', 1400, .5), g = gain();
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.035 * v, t + .25); g.gain.setValueAtTime(.035 * v, t + dur - .3); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      freqs.forEach(f => [-7, 7].forEach(det => { const o = osc('sawtooth', f, t, dur + .05); o.detune.value = det; o.connect(lp); }));
+      lp.connect(g).connect(out);
+    },
+    whoosh(t, dur = .4, v = 1) { const s = N(t, dur + .05), f = filt('bandpass', 300, 1.1); f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(5200, t + dur * .65); f.frequency.exponentialRampToValueAtTime(1400, t + dur); const g = gain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.45 * v, t + dur * .6); g.gain.exponentialRampToValueAtTime(.0001, t + dur); s.connect(f).connect(g).connect(out); },
+    pop(t, f = 600, v = 1) { const o = osc('sine', f, t, .14); o.frequency.exponentialRampToValueAtTime(f * 1.9, t + .06); const g = gain(); env(g, t, .002, .2 * v, .09); o.connect(g).connect(out); },
+    click(t, v = 1) { const s = N(t, .03), f = filt('highpass', 2600), g = gain(); env(g, t, .001, .2 * v, .018); s.connect(f).connect(g).connect(out); },
+    tap(t, v = 1) { S.click(t, v); S.pop(t, 240, .7 * v); },
+    ding(t, v = 1) { [1318.5, 1975.5, 2637].forEach((f, i) => { const g = gain(); env(g, t, .002, (.13 / (i + 1)) * v, .7); osc('sine', f, t, .8).connect(g).connect(out); }); },
+    chime(t, v = 1) { [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6].forEach((f, i) => S.pluck(t + i * .055, f * 2, 1.1 * v, .9)); },
+    boom(t, v = 1) { const o = osc('sine', 75, t, 1.1); o.frequency.exponentialRampToValueAtTime(32, t + .7); const g = gain(); env(g, t, .004, .85 * v, 1.0); o.connect(g).connect(out); const s = N(t, .8), f = filt('lowpass', 500), g2 = gain(); env(g2, t, .003, .5 * v, .6); s.connect(f).connect(g2).connect(out); },
+    thunk(t, v = 1) { const o = osc('sine', 150, t, .25); o.frequency.exponentialRampToValueAtTime(60, t + .15); const g = gain(); env(g, t, .002, .55 * v, .18); o.connect(g).connect(out); S.click(t, .6 * v); },
+    riser(t, dur, v = 1) { const s = N(t, dur + .05), f = filt('bandpass', 400, 2); f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(7000, t + dur); const g = gain(); g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.28 * v, t + dur); g.gain.linearRampToValueAtTime(.0001, t + dur + .04); s.connect(f).connect(g).connect(out); },
+  };
+  return S;
+}
+function masterChain(ac) {
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -14; comp.ratio.value = 4; comp.attack.value = .003; comp.release.value = .2;
+  const g = ac.createGain(); g.gain.value = .85;
+  g.connect(comp).connect(ac.destination);
+  return g;
+}
+// Schedule every event from timeline time `from`, with timeline `from` happening at ac time `base`.
+function scheduleAudio(ac, out, from, base) {
+  const S = makeSynth(ac, out);
+  for (const [te, fn, ...args] of EVENTS) {
+    if (te < from - .001) continue;
+    S[fn](base + (te - from), ...args);
+  }
+}
+
+// =====================================================================================
+//  Playback
+// =====================================================================================
+let actx = null, masterIn = null, session = null;
+let playing = false, loop = true, muted = false, tNow = 0, clockStart = 0, offsetStart = 0;
+const $ = id => document.getElementById(id);
+const nowSec = () => performance.now() / 1000;
+
+function ensureAudio() {
+  if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); masterIn = masterChain(actx); }
+  if (actx.state === 'suspended') actx.resume();
+}
+function stopAudio() {
+  if (!session) return;
+  const s = session; session = null;
+  s.gain.setTargetAtTime(0, actx.currentTime, .015);
+  setTimeout(() => s.disconnect(), 250);
+}
+function startAudio(from) {
+  stopAudio();
+  if (muted || !actx) return 0;
+  session = actx.createGain(); session.connect(masterIn);
+  const lead = .06;
+  scheduleAudio(actx, session, from, actx.currentTime + lead);
+  return lead;
+}
+function play(from = tNow) {
+  ensureAudio();
+  tNow = from >= DUR ? 0 : from;
+  const lead = startAudio(tNow);
+  offsetStart = tNow; clockStart = nowSec() + lead; playing = true;
+  $('play').textContent = 'Pause'; $('bigPlay').hidden = true;
+}
+function pause() { playing = false; stopAudio(); $('play').textContent = 'Play'; }
+
+function frame() {
+  if (playing && !exporting) {
+    let t = offsetStart + Math.max(0, nowSec() - clockStart);
+    if (t >= DUR) {
+      if (loop) { const lead = startAudio(0); offsetStart = 0; clockStart = nowSec() + lead; t = 0; }
+      else { t = DUR; pause(); }
+    }
+    tNow = t;
+  }
+  if (!exporting) {
+    renderFrame(Math.min(tNow, DUR - 1e-4));
+    $('scrub').value = Math.round(tNow * 100);
+    $('time').textContent = `${tNow.toFixed(2)} / ${DUR.toFixed(2)}`;
+  }
+  requestAnimationFrame(frame);
+}
+
+$('bigPlay').onclick = () => play(0);
+$('play').onclick = () => (playing ? pause() : play());
+$('replay').onclick = () => play(0);
+$('loop').onclick = e => { loop = !loop; e.currentTarget.classList.toggle('on', loop); e.currentTarget.setAttribute('aria-pressed', loop); };
+$('mute').onclick = e => {
+  muted = !muted;
+  e.currentTarget.textContent = muted ? '🔇 Muted' : '🔊 Sound';
+  e.currentTarget.setAttribute('aria-pressed', muted);
+  if (playing) { if (muted) stopAudio(); else { ensureAudio(); const lead = startAudio(tNow); offsetStart = tNow; clockStart = nowSec() + lead; } }
+};
+$('scrub').oninput = () => { pause(); tNow = $('scrub').value / 100; $('bigPlay').hidden = true; };
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.code !== 'Space') return;
+  if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+  if (e.code === 'KeyL') $('loop').click();
+  if (e.code === 'KeyM') $('mute').click();
+});
+
+// =====================================================================================
+//  Export: renders every frame offline → H.264 MP4 with AAC/Opus audio (WebCodecs).
+//  Falls back to a real-time WebM recording where WebCodecs is missing.
+// =====================================================================================
+let exporting = false;
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(s); });
+}
+function saveBlob(blob, name) {
+  window.__lastExport = { size: blob.size, type: blob.type, name };
+  if (window.__noDownload) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+const status = s => { $('status').textContent = s; };
+
+async function exportVideo() {
+  if (exporting) return;
+  pause(); exporting = true; $('export').disabled = true;
+  try {
+    if (!('VideoEncoder' in window)) return await exportRealtime();
+    status('Preparing…');
+    await loadScript('https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js');
+    let vcfg = null;
+    for (const codec of ['avc1.640033', 'avc1.640032', 'avc1.64002A', 'avc1.4D0032', 'avc1.42E033']) {
+      const cfg = { codec, width: W, height: H, bitrate: 14_000_000, framerate: FPS };
+      if ((await VideoEncoder.isConfigSupported(cfg).catch(() => ({}))).supported) { vcfg = cfg; break; }
+    }
+    if (!vcfg) return await exportRealtime();
+    let acfg = null, muxCodec = null;
+    if ('AudioEncoder' in window) {
+      for (const [codec, mux] of [['mp4a.40.2', 'aac'], ['opus', 'opus']]) {
+        const cfg = { codec, sampleRate: 48000, numberOfChannels: 2, bitrate: 192000 };
+        if ((await AudioEncoder.isConfigSupported(cfg).catch(() => ({}))).supported) { acfg = cfg; muxCodec = mux; break; }
+      }
+    }
+    const muxer = new Mp4Muxer.Muxer({
+      target: new Mp4Muxer.ArrayBufferTarget(),
+      video: { codec: 'avc', width: W, height: H, frameRate: FPS },
+      ...(acfg ? { audio: { codec: muxCodec, numberOfChannels: 2, sampleRate: 48000 } } : {}),
+      fastStart: 'in-memory', firstTimestampBehavior: 'offset',
+    });
+    let failure = null;
+    const venc = new VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: e => { failure = e; } });
+    venc.configure(vcfg);
+    const total = Math.round(DUR * FPS);
+    for (let i = 0; i < total; i++) {
+      if (failure) throw failure;
+      renderFrame(i / FPS);
+      const vf = new VideoFrame(cv, { timestamp: Math.round(i * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+      venc.encode(vf, { keyFrame: i % 120 === 0 }); vf.close();
+      if (venc.encodeQueueSize > 6) await new Promise(r => venc.addEventListener('dequeue', r, { once: true }));
+      if (i % 6 === 0) { status(`Rendering frames ${Math.round(i / total * 100)}%`); await new Promise(r => setTimeout(r)); }
+    }
+    await venc.flush();
+    if (acfg) {
+      status('Rendering sound…');
+      const off = new OfflineAudioContext(2, 48000 * DUR, 48000);
+      scheduleAudio(off, masterChain(off), 0, 0);
+      const buf = await off.startRendering();
+      const aenc = new AudioEncoder({ output: (c, m) => muxer.addAudioChunk(c, m), error: e => { failure = e; } });
+      aenc.configure(acfg);
+      const step = 4800, L = buf.getChannelData(0), R = buf.getChannelData(1);
+      for (let s = 0; s < buf.length; s += step) {
+        const n = Math.min(step, buf.length - s), data = new Float32Array(n * 2);
+        data.set(L.subarray(s, s + n), 0); data.set(R.subarray(s, s + n), n);
+        const ad = new AudioData({ format: 'f32-planar', sampleRate: 48000, numberOfFrames: n, numberOfChannels: 2, timestamp: Math.round(s * 1e6 / 48000), data });
+        aenc.encode(ad); ad.close();
+      }
+      await aenc.flush();
+      if (failure) throw failure;
+    }
+    muxer.finalize();
+    const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+    saveBlob(blob, 'droin-spot-1080p60.mp4');
+    status(`Done — ${(blob.size / 1e6).toFixed(1)} MB${acfg ? '' : ' (no audio encoder in this browser)'}`);
+  } catch (err) {
+    console.error(err); status('Export failed: ' + err.message);
+  } finally {
+    exporting = false; $('export').disabled = false;
+  }
+}
+// Fallback: record the canvas + sound in real time (15 s) as WebM.
+async function exportRealtime() {
+  ensureAudio();
+  const dest = actx.createMediaStreamDestination();
+  const stream = cv.captureStream(FPS);
+  if (!muted) dest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
+  const rec = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm', videoBitsPerSecond: 12_000_000 });
+  const parts = []; rec.ondataavailable = e => parts.push(e.data);
+  const done = new Promise(r => (rec.onstop = r));
+  const g = actx.createGain(); g.connect(dest); g.connect(masterIn);
+  scheduleAudio(actx, g, 0, actx.currentTime + .05);
+  rec.start();
+  const start = nowSec() + .05;
+  await new Promise(resolve => {
+    const tick = () => {
+      const t = nowSec() - start;
+      renderFrame(clamp(t, 0, DUR - 1e-4)); status(`Recording ${Math.round(clamp(t / DUR) * 100)}%`);
+      if (t < DUR) requestAnimationFrame(tick); else resolve();
+    };
+    tick();
+  });
+  rec.stop(); await done; g.disconnect();
+  const blob = new Blob(parts, { type: 'video/webm' });
+  saveBlob(blob, 'droin-spot.webm');
+  status(`Done — ${(blob.size / 1e6).toFixed(1)} MB (WebM)`);
+}
+$('export').onclick = exportVideo;
+
+// Start on a poster frame once the font is ready.
+document.fonts.load('800 100px Manrope').then(() => document.fonts.load('600 30px Manrope')).catch(() => {}).finally(() => {
+  tNow = 5.6;
+  requestAnimationFrame(frame);
+});
+window.__render = renderFrame;
+</script>
+</body>
+</html>

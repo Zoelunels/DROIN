@@ -1,0 +1,56 @@
+{
+  "brand": {
+    "primary_orange": {
+      "hex": "#E8A04A",
+      "rgb": [
+        232,
+        160,
+        74
+      ],
+      "usage": "Primary brand accent, CTAs, highlights"
+    },
+    "cream": {
+      "hex": "#F7F4ED",
+      "rgb": [
+        247,
+        244,
+        237
+      ],
+      "usage": "Main background / surfaces"
+    },
+    "charcoal": {
+      "hex": "#242321",
+      "rgb": [
+        36,
+        35,
+        33
+      ],
+      "usage": "Primary text, logo"
+    },
+    "secondary_gray": {
+      "hex": "#858078",
+      "rgb": [
+        133,
+        128,
+        120
+      ],
+      "usage": "Secondary text, metadata"
+    },
+    "soft_peach": {
+      "hex": "#FAD7B7",
+      "rgb": [
+        250,
+        215,
+        183
+      ],
+      "usage": "Secondary accent / soft surfaces"
+    }
+  },
+  "semantic": {
+    "income": "#6F8F72",
+    "expense": "#C96A4A",
+    "neutral": "#858078",
+    "surface": "#F7F4ED",
+    "text": "#242321"
+  }
+}

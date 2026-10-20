@@ -1,0 +1,20 @@
+{
+  "brand": "PAGENO",
+  "tagline": "Your money, one page at a time.",
+  "assets": [
+    "DESIGN.md",
+    "README.md",
+    "colors.json",
+    "pageno-app-icons.png",
+    "pageno-brand-board.png",
+    "pageno-color-palette.png",
+    "pageno-illustration-style.png",
+    "pageno-logo-horizontal.png",
+    "pageno-logo-variations.png",
+    "pageno-mascot.png",
+    "pageno-messaging.png",
+    "pageno-typography.png",
+    "pageno-usage-examples.png",
+    "pageno-wordmark.png"
+  ]
+}
