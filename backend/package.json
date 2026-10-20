@@ -1,5 +1,5 @@
 {
-  "name": "buku-kas-backend",
+  "name": "droin-backend",
   "module": "src/index.ts",
   "type": "module",
   "private": true,

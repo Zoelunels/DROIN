@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Buku Kas API
+  title: DROIN API
   version: 0.2.0
   description: >-
     Personal finance API. Every endpoint except /health, /auth/register and /auth/login needs

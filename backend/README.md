@@ -1,4 +1,4 @@
-# Buku Kas — Backend
+# DROIN — Backend
 
 Bun + Hono + PostgreSQL. Migrations are plain SQL files in `migrations/`.
 
