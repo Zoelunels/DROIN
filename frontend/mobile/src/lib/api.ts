@@ -51,6 +51,8 @@ type FetchOptions = {
   params?: Record<string, string | number | boolean | undefined>
   /** Milliseconds before giving up (default 20 s). */
   timeout?: number
+  /** Return the raw bytes instead of parsing JSON (file downloads). */
+  raw?: boolean
 }
 
 export class ApiError extends Error {
@@ -69,7 +71,7 @@ export async function apiFetch<T = unknown>(
   endpoint: string,
   options: FetchOptions = {}
 ): Promise<T> {
-  const { method = 'GET', body, headers = {}, params, timeout = 20_000 } = options
+  const { method = 'GET', body, headers = {}, params, timeout = 20_000, raw = false } = options
   const token = await getToken()
 
   let url = `${API_BASE_URL}${endpoint}`
@@ -122,6 +124,7 @@ export async function apiFetch<T = unknown>(
   }
 
   if (response.status === 204) return undefined as T
+  if (raw) return new Uint8Array(await response.arrayBuffer()) as T
 
   return response.json() as Promise<T>
 }
@@ -137,4 +140,7 @@ export const api = {
     apiFetch<T>(endpoint, { method: 'PUT', body }),
   delete: <T>(endpoint: string) =>
     apiFetch<T>(endpoint, { method: 'DELETE' }),
+  /** Downloads a file (with the login token) and returns its bytes. */
+  download: (endpoint: string, params?: Record<string, string | number | boolean | undefined>) =>
+    apiFetch<Uint8Array>(endpoint, { params, raw: true, timeout: 60_000 }),
 }

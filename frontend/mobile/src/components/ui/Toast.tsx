@@ -1,18 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Easing, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Colors } from '@/constants/colors'
+import { Icon } from '@/components/ui/Icon'
+import { Fonts, makeStyles, useColors } from '@/constants/colors'
 import { dismissToast, subscribeToasts, type NotifyTone, type ToastItem } from '@/lib/toast'
 
 const DURATION_MS = 2800
 const TONE_BG: Record<NotifyTone, string> = {
-  brand: Colors.charcoal,
-  success: Colors.income,
-  error: Colors.expense,
+  brand: '#2E1F17',
+  success: '#2F6B3B',
+  error: '#A6431F',
 }
 
-/** One toast: dark rounded card with a big emoji; slides in from the top, tap to close. */
+/** One toast: dark rounded card with an icon; slides in from the top, tap to close. */
 function Toast({ item }: { item: ToastItem }) {
+  const Colors = useColors()
+  const styles = useStyles()
   const enter = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
@@ -35,8 +38,8 @@ function Toast({ item }: { item: ToastItem }) {
         accessibilityRole="alert"
         style={[styles.toast, { backgroundColor: TONE_BG[item.tone] }]}
       >
-        <View style={styles.emojiWrap}>
-          <Text style={styles.emoji}>{item.emoji}</Text>
+        <View style={styles.iconWrap}>
+          <Icon name={item.icon} size={20} color={Colors.onColor} strokeWidth={2.25} />
         </View>
         <View style={styles.texts}>
           <Text style={styles.title}>{item.title}</Text>
@@ -49,6 +52,7 @@ function Toast({ item }: { item: ToastItem }) {
 
 /** Mount once near the root (AppProviders). Shows notify.*() toasts under the status bar. */
 export function ToastHost() {
+  const styles = useStyles()
   const insets = useSafeAreaInsets()
   const [items, setItems] = useState<ToastItem[]>([])
   useEffect(() => subscribeToasts(setItems), [])
@@ -63,7 +67,7 @@ export function ToastHost() {
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   host: { position: 'absolute', left: 16, right: 16, alignItems: 'center', gap: 8, zIndex: 1000 },
   toast: {
     flexDirection: 'row',
@@ -80,7 +84,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },
-  emojiWrap: {
+  iconWrap: {
     width: 36,
     height: 36,
     borderRadius: 12,
@@ -88,8 +92,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  emoji: { fontSize: 18 },
   texts: { flex: 1, gap: 2 },
-  title: { fontSize: 15, fontWeight: '800', color: Colors.white },
-  description: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.82)' },
-})
+  title: { fontSize: 15, fontFamily: Fonts.extrabold, color: Colors.onColor },
+  description: { fontSize: 13, fontFamily: Fonts.semibold, color: 'rgba(255,255,255,0.82)' },
+}))

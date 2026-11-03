@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
-import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
-import { Colors } from '@/constants/colors'
+import { ActivityIndicator, Animated, Easing, Pressable, Text, View } from 'react-native'
+import { Icon } from '@/components/ui/Icon'
+import { Fonts, makeStyles, useColors } from '@/constants/colors'
 
 const SIZE = 112
 
@@ -25,6 +25,8 @@ export function MicButton({
   onPressIn: () => void
   onPressOut: () => void
 }) {
+  const Colors = useColors()
+  const styles = useStyles()
   const ring = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
@@ -78,7 +80,7 @@ export function MicButton({
         {busy ? (
           <ActivityIndicator color="#FFFFFF" size="large" />
         ) : (
-          <Ionicons name={recording ? 'stop' : 'mic'} size={recording ? 38 : 46} color={soon ? '#C9853A' : '#FFFFFF'} />
+          <Icon name={recording ? 'stop' : 'mic'} size={recording ? 34 : 44} filled={recording} color={soon ? '#C9853A' : '#FFFFFF'} />
         )}
       </Pressable>
       {soon ? (
@@ -90,7 +92,7 @@ export function MicButton({
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   // Sits on the mic's lower edge, like a label on a drawer.
   badge: {
     position: 'absolute',
@@ -99,7 +101,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 8,
     justifyContent: 'center',
-    backgroundColor: Colors.charcoal,
+    backgroundColor: Colors.inkCard,
   },
-  badgeText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: Colors.white },
-})
+  badgeText: { fontSize: 11, fontFamily: Fonts.extrabold, letterSpacing: 1.2, color: Colors.onColor },
+}))

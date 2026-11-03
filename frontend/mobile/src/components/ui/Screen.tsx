@@ -1,7 +1,8 @@
 import React from 'react'
-import { Platform, ScrollView, StyleSheet, View, useWindowDimensions, type ViewStyle } from 'react-native'
+import { Platform, ScrollView, View, useWindowDimensions, type ViewStyle } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Colors } from '@/constants/colors'
+import { makeStyles } from '@/constants/colors'
+import { TAB_BAR_HEIGHT } from '@/components/TabBar'
 
 /** Content never gets wider than this, so tablets and landscape phones keep a readable column. */
 export const MAX_CONTENT_WIDTH = 480
@@ -10,7 +11,8 @@ export const MAX_CONTENT_WIDTH = 480
  * Standard screen shell: safe-area padding on all four edges (notch, home indicator, landscape
  * cut-outs), a 20 px gutter (16 px on very narrow phones), and a centred column capped at 480 px.
  * `centered` vertically centres short content, such as the login form.
- * `inTabs`: the bottom menu already sits above the home indicator, so no bottom inset is added.
+ * `inTabs`: the bottom menu floats over the bottom of the screen (and its safe area), so the content
+ * leaves room for it and the last item can scroll clear of it.
  */
 export function Screen({
   children,
@@ -19,7 +21,7 @@ export function Screen({
   centered = false,
   inTabs = false,
   bottomSpace = 24,
-  bg = Colors.background,
+  bg,
   contentStyle,
   refreshControl,
 }: {
@@ -34,13 +36,14 @@ export function Screen({
   /** Pull-to-refresh control for scrolling screens. */
   refreshControl?: React.ComponentProps<typeof ScrollView>['refreshControl']
 }) {
+  const styles = useStyles()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const gutter = padded ? (width < 360 ? 16 : 20) : 0
 
   const padding: ViewStyle = {
     paddingTop: insets.top + 12,
-    paddingBottom: (inTabs ? 0 : insets.bottom) + bottomSpace,
+    paddingBottom: insets.bottom + (inTabs ? TAB_BAR_HEIGHT : 0) + bottomSpace,
     paddingLeft: insets.left + gutter,
     paddingRight: insets.right + gutter,
   }
@@ -66,9 +69,9 @@ export function Screen({
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   fill: { flex: 1 },
   grow: { flexGrow: 1 },
   column: { flexGrow: 1, width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center', gap: 16 },
   centered: { justifyContent: 'center' },
-})
+}))

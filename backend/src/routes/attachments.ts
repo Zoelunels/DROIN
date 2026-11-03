@@ -4,6 +4,7 @@ import { pool } from "../db";
 import { HttpError } from "../errors";
 import {
   ALLOWED_MIME_TYPES,
+  detectFileType,
   MAX_UPLOAD_BYTES,
   removeStoredFiles,
   saveUpload,
@@ -62,17 +63,18 @@ transactionAttachmentsRouter.post(
     }
     const file = form.get("file");
     if (!(file instanceof File)) throw new HttpError(400, "Send the file in a field named \"file\"");
-    if (!ALLOWED_MIME_TYPES[file.type]) {
+    const type = await detectFileType(file);
+    if (!type) {
       throw new HttpError(415, `Unsupported file type. Allowed: ${Object.keys(ALLOWED_MIME_TYPES).join(", ")}`);
     }
     if (file.size > MAX_UPLOAD_BYTES) throw new HttpError(413, "File is too large (max 5 MB)");
 
-    const storedName = await saveUpload(file);
+    const storedName = await saveUpload(file, type);
     try {
       const { rows } = await pool.query(
         `INSERT INTO attachments (user_id, transaction_id, stored_name, original_name, mime_type, size_bytes)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${COLUMNS}`,
-        [userId, transactionId, storedName, (file.name || "receipt").slice(0, 255), file.type, file.size],
+        [userId, transactionId, storedName, (file.name || "receipt").slice(0, 255), type, file.size],
       );
       await pool.query("UPDATE transactions SET updated_at = now() WHERE id = $1", [transactionId]);
       return c.json(rows[0], 201);

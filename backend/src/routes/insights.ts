@@ -4,8 +4,11 @@ import { HttpError, readJson } from "../errors";
 import { buildInsights } from "../services/insights";
 import { pool } from "../db";
 import { parseQuickInput, splitItems } from "../services/quickInput";
+import { detectFileType } from "../services/attachments";
+import { readPdfText, readReceipt } from "../services/ocr";
+import { parseReceipt } from "../services/receipt";
 import { transcribe } from "../services/speech";
-import { monthIn } from "../time";
+import { monthIn, todayIn } from "../time";
 import { requireMonth } from "../validate";
 
 export const insightsRouter = new Hono<AppEnv>();
@@ -72,4 +75,73 @@ quickInputRouter.post("/voice", async (c) => {
     for (const d of drafts) if (d.matched.date === "default") d.transaction_date = spokenDate;
   }
   return c.json({ transcript, drafts });
+});
+
+const RECEIPT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
+
+// POST /quick-input/receipt  multipart/form-data, field "image" (a photo of a receipt / struk or an
+// invoice, or an invoice PDF) → { kind, text, merchant, total, date, payment, draft }. Nothing is saved:
+// the app shows the draft, then saves it with POST /transactions and attaches the file with
+// POST /transactions/:id/attachments.
+quickInputRouter.post("/receipt", async (c) => {
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    throw new HttpError(400, "Send the photo as multipart/form-data in a field named \"image\"");
+  }
+  const image = form.get("image");
+  if (!(image instanceof File)) throw new HttpError(400, "Send the photo in a field named \"image\"");
+  if (image.size === 0) throw new HttpError(422, "That file is empty");
+  if (image.size > MAX_RECEIPT_BYTES) throw new HttpError(413, "File is too large (max 5 MB)");
+  // The bytes decide what the file is: phones don't always send the right type with an upload.
+  const type = await detectFileType(image);
+  if (!type || !RECEIPT_TYPES.has(type)) throw new HttpError(415, "Send a JPEG, PNG or WebP photo, or a PDF invoice");
+
+  const user = c.get("user");
+  const bytes = new Uint8Array(await image.arrayBuffer());
+  const isPdf = type === "application/pdf";
+  const { text, engine } = isPdf ? { text: await readPdfText(bytes), engine: "pdf-text" as const } : await readReceipt(bytes);
+  // Fewer than a handful of letters and digits: a blurry photo, a scanned PDF, or not a receipt at all.
+  if ((text.match(/[\p{L}\p{N}]/gu) ?? []).length < 8) {
+    throw new HttpError(
+      422,
+      isPdf
+        ? "That PDF has no text in it (it's a scan). Take a photo or screenshot of it instead"
+        : "Couldn't read that receipt. Try a sharper, flatter photo with good light",
+    );
+  }
+  const info = parseReceipt(text, todayIn(user.timezone));
+
+  // Category and wallet guesses come from the same rules as typed input, using the shop name
+  // ("Indomaret" → Groceries, "Kopi Senja" → Food & Drinks). Amount, date and note come from the receipt.
+  const draft = await parseQuickInput(user.id, user.timezone, info.merchant ?? "struk");
+  draft.amount = info.total;
+  draft.matched.amount = info.total !== null;
+  draft.note = info.merchant;
+  if (info.date) {
+    draft.transaction_date = info.date;
+    draft.matched.date = "text";
+  }
+  if (info.payment) {
+    // "QRIS"/"Debit" don't name a wallet; a wallet called GoPay/BCA/… or a cash wallet does.
+    const { rows: wallets } = await pool.query(
+      "SELECT id, name, wallet_type FROM wallets WHERE user_id = $1 AND archived_at IS NULL ORDER BY id",
+      [user.id],
+    );
+    const payment = info.payment.toLowerCase();
+    const wallet =
+      wallets.find((w) => w.name.toLowerCase() === payment) ??
+      wallets.find((w) => w.name.toLowerCase().includes(payment)) ??
+      (payment === "cash" ? wallets.find((w) => w.wallet_type === "cash") : undefined);
+    if (wallet) {
+      draft.wallet_id = wallet.id;
+      draft.wallet_name = wallet.name;
+      draft.matched.wallet = "name";
+    }
+  }
+
+  // engine: "paddleocr", "tesseract" (the weak fallback: double-check the amount) or "pdf-text".
+  return c.json({ text: text.slice(0, 3000), engine, ...info, draft });
 });

@@ -1,19 +1,22 @@
 import React from 'react'
-import { Pressable, StyleSheet, Text } from 'react-native'
-import { Colors } from '@/constants/colors'
+import { Pressable, Text } from 'react-native'
+import { Icon, type IconName } from '@/components/ui/Icon'
+import { Fonts, makeStyles, useColors } from '@/constants/colors'
 
 /** Selectable chip for filters and pickers: 34 px tall, 10 px radius, charcoal when picked. */
 export function Chip({
   label,
-  emoji,
+  icon,
   active,
   onPress,
 }: {
   label: string
-  emoji?: string | null
+  icon?: IconName | null
   active?: boolean
   onPress?: () => void
 }) {
+  const Colors = useColors()
+  const styles = useStyles()
   return (
     <Pressable
       onPress={onPress}
@@ -21,17 +24,17 @@ export function Chip({
       accessibilityState={{ selected: !!active }}
       style={({ pressed }) => [
         styles.chip,
-        { backgroundColor: active ? Colors.charcoal : pressed ? Colors.cream : Colors.white },
+        { backgroundColor: active ? Colors.charcoal : pressed ? Colors.cream : Colors.surface },
         { borderColor: active ? Colors.charcoal : Colors.borderLight },
       ]}
     >
-      {emoji ? <Text style={styles.emoji}>{emoji}</Text> : null}
-      <Text style={[styles.label, { color: active ? Colors.white : Colors.charcoal }]}>{label}</Text>
+      {icon ? <Icon name={icon} size={16} color={active ? Colors.surface : Colors.charcoal} /> : null}
+      <Text style={[styles.label, { color: active ? Colors.surface : Colors.charcoal }]}>{label}</Text>
     </Pressable>
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -41,6 +44,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1.5,
   },
-  emoji: { fontSize: 14 },
-  label: { fontSize: 14, fontWeight: '600' },
-})
+  label: { fontSize: 14, fontFamily: Fonts.semibold },
+}))

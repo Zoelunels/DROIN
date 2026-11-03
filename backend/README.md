@@ -16,6 +16,25 @@ the token. The spec lives in `openapi.yaml` and is written by hand: update it wh
 
 New migration: add a file `NNN_name.sql` with the next number. Applied files are recorded in `schema_migrations`.
 
+## Receipt scanning (OCR)
+
+Free and private: receipt photos are read on this machine and never sent anywhere.
+
+```bash
+bun run ocr setup  # one time: installs the PaddleOCR service into ocr-service/.venv
+```
+
+After that, `bun run dev` starts the service by itself (`OCR_AUTOSTART=off` to run it by hand with
+`bun run ocr`). Setup needs Python 3.10+ on PATH, or `PYTHON=path/to/python`; about 300 MB, one time.
+Each scan's response says which reader was used (`engine`): `tesseract` means the service wasn't
+running, so double-check the amount. It runs PaddleOCR's PP-OCR models through RapidOCR on ONNX Runtime, so no
+PaddlePaddle install is needed, and the models ship with the package, so it works offline.
+
+It's optional. While it isn't running (or `OCR_SERVICE_URL=off`), scans use Tesseract inside the API
+instead. Tesseract is much weaker on real photos: on our test set (clean, tilted, angled, blurred and faded
+receipts) PaddleOCR got 52/56 fields right and Tesseract 31/56, and Tesseract read nothing on tilted or
+angled photos of faded receipts. Invoice PDFs don't need OCR either way: their text is read directly.
+
 ## Accounts
 
 Everything except `/health`, `/auth/register` and `/auth/login` needs `Authorization: Bearer <token>`.
@@ -44,8 +63,8 @@ bun run set-password owner@localhost <new-password>
 | Debts | `/debts` | payable/receivable, repayments, optional wallet movements |
 | Tags | `/tags` | created on the fly from transactions |
 | Insights | `/insights` | spending pace, budget alerts, savings rate, due debts/goals, "Nothing happened here. Suspicious." |
-| Quick input | `/quick-input/parse`, `/quick-input/voice` | "makan 25k gopay kemarin" → a transaction draft; voice: a recording → transcript + drafts (needs `STT_API_KEY`) |
-| Export | `/export/transactions.csv`, `/export/monthly-report.html` | CSV for Excel; HTML report → PDF via expo-print |
+| Quick input | `/quick-input/parse`, `/quick-input/receipt`, `/quick-input/voice` | "makan 25k gopay kemarin" → a transaction draft; receipt or invoice photo → draft via free, private, local OCR (PaddleOCR service, Tesseract fallback), invoice PDFs read from their text; voice: a recording → transcript + drafts (needs `STT_API_KEY`) |
+| Export | `/export/transactions.xlsx`, `/export/transactions.csv`, `/export/monthly-report.html` | Excel workbook or CSV (same filters as the History list); HTML report → PDF via expo-print |
 | Sync | `/sync/changes?since=` | changed rows + deletion tombstones for offline phones |
 | Notifications | `/notifications/*` | Expo push tokens, daily reminder at the user's chosen time |
 

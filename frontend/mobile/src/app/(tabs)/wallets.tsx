@@ -4,26 +4,31 @@ import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { Input } from '@/components/ui/Input'
 import { Screen } from '@/components/ui/Screen'
-import { Banner } from '@/components/ui/States'
+import { Banner, EmptyState, Skeleton } from '@/components/ui/States'
+import { PageTitle } from '@/components/ui/Section'
+import { Mascot } from '@/components/Mascot'
 import { Endpoints } from '@/constants/api'
-import { Colors } from '@/constants/colors'
+import { card, Fonts, ledge, makeStyles, useColors } from '@/constants/colors'
 import { useScreenData } from '@/hooks/useScreenData'
 import { ApiError, api } from '@/lib/api'
-import { asEmoji, groupDigits, money } from '@/lib/display'
-import { walletEmoji } from '@/lib/emoji'
+import { groupDigits, money } from '@/lib/display'
+import { WALLET_TYPE_ICON, walletIconName } from '@/lib/icons'
+import { IconTile } from '@/components/ui/Icon'
 import { notify } from '@/lib/toast'
 import type { BalanceReport, WalletType } from '@/types/api'
 
-const TYPES: { value: WalletType; label: string; emoji: string }[] = [
-  { value: 'cash', label: 'Cash', emoji: '💵' },
-  { value: 'bank', label: 'Bank', emoji: '🏦' },
-  { value: 'ewallet', label: 'E-wallet', emoji: '📱' },
-  { value: 'savings', label: 'Savings', emoji: '🐷' },
-  { value: 'other', label: 'Other', emoji: '🗂️' },
+const TYPES: { value: WalletType; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'bank', label: 'Bank' },
+  { value: 'ewallet', label: 'E-wallet' },
+  { value: 'savings', label: 'Savings' },
+  { value: 'other', label: 'Other' },
 ]
 const typeLabel = (t: WalletType) => TYPES.find((x) => x.value === t)?.label ?? 'Other'
 
 export default function Wallets() {
+  const Colors = useColors()
+  const styles = useStyles()
   const load = useCallback(() => api.get<BalanceReport>(Endpoints.reportBalances), [])
   const { data, error, refreshing, refresh, reload } = useScreenData(load)
 
@@ -74,19 +79,28 @@ export default function Wallets() {
         bottomSpace={24}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.orange} colors={[Colors.orange]} />}
       >
-        <Text style={styles.title}>Wallets</Text>
+        <PageTitle eyebrow={wallets.length ? `${wallets.length} ${wallets.length === 1 ? 'place' : 'places'} your money lives` : 'Where your money lives'} title="Wallets" />
 
         <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>All wallets together</Text>
-          <Text style={styles.total} numberOfLines={1} adjustsFontSizeToFit>
-            {data ? money(data.total) : 'Rp –'}
-          </Text>
+          <View style={styles.flex}>
+            <Text style={styles.totalLabel}>All wallets together</Text>
+            {data ? (
+              <Text style={[styles.total, data.total < 0 && { color: '#5E1404' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {money(data.total)}
+              </Text>
+            ) : (
+              <View style={styles.totalSkeleton}>
+                <Skeleton width="70%" height={28} radius={9} />
+              </View>
+            )}
+          </View>
+          <Mascot size={70} mood="happy" />
         </View>
 
         {error && !data ? (
           <View style={styles.gap}>
             <Banner
-              emoji="📡"
+              icon="offline"
               tone="expense"
               text={error instanceof ApiError && error.offline ? "Can't reach the drawer. Check your connection." : 'The drawer jammed.'}
             />
@@ -98,9 +112,7 @@ export default function Wallets() {
           <View style={styles.card}>
             {wallets.map((w, i) => (
               <View key={w.id} style={[styles.row, i < wallets.length - 1 && styles.divider]}>
-                <View style={styles.tile}>
-                  <Text style={styles.tileEmoji}>{asEmoji(w.icon) ?? walletEmoji(w.name, w.wallet_type)}</Text>
-                </View>
+                <IconTile name={walletIconName(w)} bg={Colors.cream} color={Colors.charcoal} />
                 <View style={styles.rowText}>
                   <Text style={styles.rowName} numberOfLines={1}>
                     {w.name}
@@ -112,7 +124,7 @@ export default function Wallets() {
             ))}
           </View>
         ) : data ? (
-          <Text style={styles.hint}>No wallets yet. Add the places your money lives: cash, bank, e-wallet.</Text>
+          <EmptyState compact mood="curious" title="No wallets yet." subtitle="Add the places your money lives: cash, a bank account, GoPay…" />
         ) : null}
 
         {adding ? (
@@ -123,7 +135,7 @@ export default function Wallets() {
               <Text style={styles.label}>Type</Text>
               <View style={styles.types}>
                 {TYPES.map((t) => (
-                  <Chip key={t.value} label={t.label} emoji={t.emoji} active={type === t.value} onPress={() => setType(t.value)} />
+                  <Chip key={t.value} label={t.label} icon={WALLET_TYPE_ICON[t.value]} active={type === t.value} onPress={() => setType(t.value)} />
                 ))}
               </View>
             </View>
@@ -142,48 +154,43 @@ export default function Wallets() {
             </View>
           </View>
         ) : (
-          <Button variant="secondary" label="Add a wallet" emoji="➕" onPress={() => setAdding(true)} full />
+          <Button label="Add a wallet" onPress={() => setAdding(true)} full />
         )}
       </Screen>
     </KeyboardAvoidingView>
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   fill: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
   gap: { gap: 8 },
   gapSm: { gap: 6 },
-  title: { fontSize: 26, fontWeight: '800', color: Colors.charcoal, letterSpacing: -0.5 },
-  totalCard: { padding: 18, gap: 2, borderRadius: 18, backgroundColor: Colors.cream },
-  totalLabel: { fontSize: 13, fontWeight: '600', color: Colors.secondaryGray },
-  total: { fontSize: 28, fontWeight: '800', color: Colors.charcoal, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
-  card: {
-    paddingHorizontal: 16,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: Colors.borderLight,
-    backgroundColor: Colors.white,
+  totalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 18,
+    paddingRight: 14,
+    borderRadius: 22,
+    backgroundColor: Colors.orange,
+    borderWidth: 2,
+    borderColor: Colors.ink,
+    ...ledge(Colors.ink, 4),
   },
+  totalLabel: { fontSize: 13, fontFamily: Fonts.extrabold, color: '#46362B' },
+  total: { fontSize: 30, fontFamily: Fonts.black, color: Colors.ink, letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  totalSkeleton: { height: 40, justifyContent: 'center' },
+  card: { paddingHorizontal: 16, ...card(Colors) },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
-  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.borderLight },
-  tile: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.cream },
-  tileEmoji: { fontSize: 19 },
-  rowText: { flex: 1, gap: 2 },
-  rowName: { fontSize: 15, fontWeight: '700', color: Colors.charcoal },
-  rowType: { fontSize: 13, color: Colors.secondaryGray },
-  rowBalance: { fontSize: 15, fontWeight: '700', color: Colors.charcoal, fontVariant: ['tabular-nums'] },
-  hint: { fontSize: 14, lineHeight: 20, color: Colors.secondaryGray },
-  form: {
-    gap: 14,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: Colors.borderLight,
-    backgroundColor: Colors.white,
-  },
-  formTitle: { fontSize: 17, fontWeight: '800', color: Colors.charcoal },
-  label: { fontSize: 13, fontWeight: '600', color: Colors.charcoal },
+  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border },
+  rowText: { flex: 1, gap: 1 },
+  rowName: { fontSize: 16, fontFamily: Fonts.extrabold, color: Colors.charcoal },
+  rowType: { fontFamily: Fonts.semibold, fontSize: 13, color: Colors.secondaryGray },
+  rowBalance: { fontSize: 16, fontFamily: Fonts.black, color: Colors.charcoal, fontVariant: ['tabular-nums'] },
+  form: { gap: 14, padding: 16, ...card(Colors) },
+  formTitle: { fontSize: 18, fontFamily: Fonts.black, color: Colors.charcoal },
+  label: { fontSize: 13, fontFamily: Fonts.bold, color: Colors.charcoal },
   types: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  formButtons: { flexDirection: 'row', gap: 10, marginTop: 4 },
-})
+  formButtons: { flexDirection: 'row', gap: 10, marginTop: 4, alignItems: 'flex-end' },
+}))

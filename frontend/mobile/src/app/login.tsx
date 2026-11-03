@@ -1,12 +1,12 @@
 import React, { useRef, useState } from 'react'
-import { Dimensions, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native'
+import { Dimensions, KeyboardAvoidingView, Platform, Pressable, Text, View, useWindowDimensions, type TextInputInstance } from 'react-native'
 import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
-import { Mascot } from '@/components/Mascot'
+import { Icon } from '@/components/ui/Icon'
+import { Mascot, Wordmark } from '@/components/Mascot'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Screen } from '@/components/ui/Screen'
-import { Colors } from '@/constants/colors'
+import { card, Fonts, makeStyles, useColors } from '@/constants/colors'
 import { ApiError } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 
@@ -30,6 +30,8 @@ const COPY: Record<Mode, { title: string; subtitle: string; action: string; swit
 }
 
 export default function Login() {
+  const Colors = useColors()
+  const styles = useStyles()
   const { login, register } = useAuth()
   useWindowDimensions() // re-render on rotation
   // Screen size, not window size: on Android the window shrinks while the keyboard is open, and
@@ -41,8 +43,8 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const emailRef = useRef<TextInput>(null)
-  const passwordRef = useRef<TextInput>(null)
+  const emailRef = useRef<TextInputInstance>(null)
+  const passwordRef = useRef<TextInputInstance>(null)
 
   const copy = COPY[mode]
   const compact = screen.height < 700 || screen.width > screen.height // small phones or landscape
@@ -73,19 +75,19 @@ export default function Login() {
     <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen centered bottomSpace={16}>
         <View style={[styles.header, compact && styles.headerCompact]}>
-          <Mascot size={compact ? 72 : 96} mood={error ? 'sad' : 'happy'} />
-          <Text style={styles.wordmark}>DROIN</Text>
+          <Mascot size={compact ? 96 : 140} mood={error ? 'sad' : busy ? 'cheer' : 'happy'} />
+          <Wordmark width={compact ? 104 : 132} />
           <View style={styles.titles}>
             <Text style={[styles.title, compact && styles.titleCompact]}>{copy.title}</Text>
             <Text style={styles.subtitle}>{copy.subtitle}</Text>
           </View>
         </View>
 
-        <View style={styles.form}>
+        <View style={styles.formCard}>
           {mode === 'register' ? (
             <Input
               label="Name"
-              icon="person-outline"
+              icon="user"
               value={name}
               onChangeText={setName}
               placeholder="What should we call you?"
@@ -99,7 +101,7 @@ export default function Login() {
           <Input
             ref={emailRef}
             label="Email"
-            icon="mail-outline"
+            icon="mail"
             value={email}
             onChangeText={setEmail}
             placeholder="you@example.com"
@@ -115,7 +117,7 @@ export default function Login() {
           <Input
             ref={passwordRef}
             label="Password"
-            icon="lock-closed-outline"
+            icon="lock"
             value={password}
             onChangeText={setPassword}
             placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'}
@@ -130,7 +132,7 @@ export default function Login() {
 
           {error ? (
             <View style={styles.errorBox} accessibilityRole="alert">
-              <Ionicons name="alert-circle" size={18} color={Colors.expense} />
+              <Icon name="alert" size={18} color={Colors.expense} />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
@@ -149,16 +151,15 @@ export default function Login() {
   )
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   fill: { flex: 1, backgroundColor: Colors.background },
-  header: { alignItems: 'center', gap: 10, marginBottom: 12 },
+  header: { alignItems: 'center', gap: 12, marginBottom: 8 },
   headerCompact: { gap: 6, marginBottom: 4 },
-  wordmark: { fontSize: 15, fontWeight: '800', letterSpacing: 3, color: Colors.orange },
   titles: { alignItems: 'center', gap: 4 },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.charcoal, letterSpacing: -0.5, textAlign: 'center' },
+  title: { fontSize: 28, fontFamily: Fonts.black, color: Colors.charcoal, letterSpacing: -0.6, textAlign: 'center' },
   titleCompact: { fontSize: 24 },
-  subtitle: { fontSize: 15, color: Colors.secondaryGray, textAlign: 'center' },
-  form: { gap: 14 },
+  subtitle: { fontFamily: Fonts.regular, fontSize: 15, color: Colors.secondaryGray, textAlign: 'center' },
+  formCard: { gap: 14, padding: 18, ...card(Colors), borderRadius: 24 },
   submit: { marginTop: 6 },
   errorBox: {
     flexDirection: 'row',
@@ -167,10 +168,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 12,
-    backgroundColor: '#F6E3DC',
+    backgroundColor: Colors.expenseSoft,
   },
-  errorText: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: '600', color: '#7C3A25' },
+  errorText: { flex: 1, fontSize: 14, lineHeight: 19, fontFamily: Fonts.semibold, color: Colors.expense },
   switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingTop: 8 },
-  switchText: { fontSize: 15, color: Colors.secondaryGray },
-  switchLink: { fontSize: 15, fontWeight: '700', color: '#C9853A' },
-})
+  switchText: { fontFamily: Fonts.regular, fontSize: 15, color: Colors.secondaryGray },
+  switchLink: { fontSize: 15, fontFamily: Fonts.black, color: Colors.orangeDeep },
+}))

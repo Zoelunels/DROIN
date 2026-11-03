@@ -1,7 +1,7 @@
 import React, { forwardRef, useState } from 'react'
-import { Platform, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
-import { Colors } from '@/constants/colors'
+import { Platform, Pressable, Text, TextInput, View, type TextInputProps, type TextInputInstance } from 'react-native'
+import { Icon, type IconName } from '@/components/ui/Icon'
+import { Fonts, makeStyles, useColors } from '@/constants/colors'
 
 /**
  * DROIN text field. Built on React Native primitives so sizing, focus and error states are exact
@@ -12,15 +12,17 @@ import { Colors } from '@/constants/colors'
  */
 export interface InputFieldProps extends TextInputProps {
   label?: string
-  icon?: keyof typeof Ionicons.glyphMap
+  icon?: IconName
   error?: string
   hint?: string
 }
 
-export const Input = forwardRef<TextInput, InputFieldProps>(function Input(
+export const Input = forwardRef<TextInputInstance, InputFieldProps>(function Input(
   { label, icon, error, hint, secureTextEntry, style, onFocus, onBlur, editable = true, ...props },
   ref,
 ) {
+  const Colors = useColors()
+  const styles = useStyles()
   const [focused, setFocused] = useState(false)
   const [hidden, setHidden] = useState(true)
   const isPassword = secureTextEntry === true
@@ -37,12 +39,12 @@ export const Input = forwardRef<TextInput, InputFieldProps>(function Input(
           styles.field,
           {
             borderColor: error ? Colors.expense : focused ? Colors.orange : Colors.borderLight,
-            backgroundColor: error ? '#FDF6F3' : editable ? Colors.white : Colors.cream,
+            backgroundColor: error ? Colors.expenseSoft : editable ? Colors.surface : Colors.cream,
           },
         ]}
       >
         {icon ? (
-          <Ionicons
+          <Icon
             name={icon}
             size={18}
             color={error ? Colors.expense : focused ? Colors.orange : Colors.secondaryGray}
@@ -52,7 +54,7 @@ export const Input = forwardRef<TextInput, InputFieldProps>(function Input(
         <TextInput
           ref={ref}
           style={[styles.input, style]}
-          placeholderTextColor="#ABA59C"
+          placeholderTextColor={Colors.placeholder}
           selectionColor={Colors.orange}
           cursorColor={Colors.orange}
           secureTextEntry={isPassword && hidden}
@@ -75,14 +77,14 @@ export const Input = forwardRef<TextInput, InputFieldProps>(function Input(
             accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
             style={styles.trailing}
           >
-            <Ionicons name={hidden ? 'eye-outline' : 'eye-off-outline'} size={19} color={Colors.secondaryGray} />
+            <Icon name={hidden ? 'eye' : 'eye-off'} size={19} color={Colors.secondaryGray} />
           </Pressable>
         ) : null}
       </View>
 
       {error ? (
         <View style={styles.messageRow}>
-          <Ionicons name="alert-circle" size={14} color={Colors.expense} />
+          <Icon name="alert" size={14} color={Colors.expense} />
           <Text style={[styles.message, styles.error]}>{error}</Text>
         </View>
       ) : hint ? (
@@ -92,9 +94,9 @@ export const Input = forwardRef<TextInput, InputFieldProps>(function Input(
   )
 })
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((Colors) => ({
   wrap: { width: '100%', gap: 6 },
-  label: { fontSize: 13, fontWeight: '600', color: Colors.charcoal, letterSpacing: 0.1 },
+  label: { fontSize: 13, fontFamily: Fonts.semibold, color: Colors.charcoal, letterSpacing: 0.1 },
   field: {
     width: '100%',
     height: 52,
@@ -103,7 +105,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: Colors.borderLight,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.surface,
     paddingHorizontal: 14,
   },
   icon: { marginRight: 10 },
@@ -113,7 +115,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     fontSize: 16,
-    fontWeight: '500',
+    fontFamily: Fonts.regular,
     color: Colors.charcoal,
     paddingVertical: 0,
     paddingHorizontal: 0,
@@ -124,7 +126,7 @@ const styles = StyleSheet.create({
   } as object,
   trailing: { marginLeft: 8, height: '100%', justifyContent: 'center' },
   messageRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 2 },
-  message: { fontSize: 13, lineHeight: 18 },
-  error: { color: Colors.expense, fontWeight: '600', flex: 1 },
+  message: { fontFamily: Fonts.regular, fontSize: 13, lineHeight: 18 },
+  error: { color: Colors.expense, fontFamily: Fonts.semibold, flex: 1 },
   hint: { color: Colors.secondaryGray, paddingLeft: 2 },
-})
+}))

@@ -808,6 +808,60 @@ paths:
         "200":
           description: Draft
           content: { application/json: { schema: { $ref: "#/components/schemas/QuickDraft" } } }
+  /quick-input/receipt:
+    post:
+      tags: [Quick input]
+      summary: Scan a receipt (struk) or invoice (photo or PDF) into a transaction draft (nothing is saved)
+      description: |
+        Reads a photo with local OCR (PaddleOCR service when running, else Tesseract; free, never leaves the server), or a PDF from its text
+        layer (scanned PDFs without text are refused with 422), and finds the total
+        (GRAND TOTAL / TOTAL TAGIHAN / AMOUNT DUE / BALANCE DUE / TOTAL, else paid minus change), the date (the
+        invoice date, never the due date), the shop or seller name (not the Bill To buyer) and the
+        payment method. The draft uses the shop name for the category (Indomaret → Groceries) and the payment
+        method for the wallet (a wallet named QRIS/GoPay/BCA…, or your cash wallet for TUNAI). Save it with
+        POST /transactions, then attach the photo with POST /transactions/{id}/attachments.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image: { type: string, format: binary, description: "JPEG, PNG or WebP photo, or a PDF invoice; max 5 MB" }
+      responses:
+        "200":
+          description: What was read, and a draft
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string, enum: [receipt, invoice] }
+                  text: { type: string, description: Raw OCR or PDF text (max 3000 characters) }
+                  engine:
+                    type: string
+                    enum: [paddleocr, tesseract, pdf-text]
+                    description: Which reader produced the text. tesseract is the weak fallback used when the PaddleOCR service isn't running; worth double-checking the amount.
+                  merchant: { type: string, nullable: true, example: Indomaret }
+                  total: { type: number, nullable: true, example: 40000 }
+                  date: { type: string, format: date, nullable: true }
+                  payment: { type: string, nullable: true, example: QRIS }
+                  items:
+                    type: array
+                    description: What was bought, line by line (name and line amount); empty when the receipt lists none
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string, example: Indomie Goreng }
+                        amount: { type: number, example: 9300 }
+                  draft: { $ref: "#/components/schemas/QuickDraft" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413": { description: Photo too large, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "415": { description: Not a JPEG/PNG/WebP image or PDF, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "Empty file, no readable text (blurry, scanned PDF, not a receipt), or a damaged PDF", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: OCR failed (e.g. language data could not be downloaded on the first scan), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
   /quick-input/voice:
     post:
       tags: [Quick input]
@@ -846,14 +900,29 @@ paths:
         "503": { description: Voice input is not configured on the server (no STT_API_KEY), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   # ---------------------------------------------------------------- Export
+  /export/transactions.xlsx:
+    get:
+      tags: [Export]
+      summary: Excel workbook (.xlsx) of transactions
+      description: |
+        One sheet, oldest first: Date (a real date), Type (In/Out), Category, Wallet, Note, Amount (number;
+        In positive, Out negative, so SUM gives the change in balance), Kind (Entry/Transfer/Transfer fee/Debt), Tags.
+        Bold header row stays visible while scrolling and has filters. Opening balances are included as In entries.
+      parameters: &exportFilters
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: wallet_id, in: query, schema: { type: integer } }
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/TransactionType" } }
+        - { name: q, in: query, description: Search in note and category name, schema: { type: string } }
+      responses:
+        "200": { description: Excel file, content: { application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: {} } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /export/transactions.csv:
     get:
       tags: [Export]
       summary: CSV for Excel / Google Sheets
-      parameters:
-        - { name: from, in: query, schema: { type: string, format: date } }
-        - { name: to, in: query, schema: { type: string, format: date } }
-        - { name: wallet_id, in: query, schema: { type: integer } }
+      parameters: *exportFilters
       responses: { "200": { description: CSV file, content: { text/csv: {} } } }
   /export/monthly-report.html:
     get:
@@ -999,7 +1068,7 @@ components:
       properties:
         name: { type: string, example: Food & Drinks }
         type: { $ref: "#/components/schemas/TransactionType" }
-        icon: { type: string, nullable: true, example: utensils }
+        icon: { type: string, nullable: true, example: utensils, description: "An icon key (lowercase, digits, dashes) or one emoji such as 🍜" }
         color: { type: string, nullable: true, example: "#F4A259" }
     Category:
       allOf:

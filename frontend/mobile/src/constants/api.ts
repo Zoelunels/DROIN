@@ -30,6 +30,8 @@ export const Endpoints = {
   insights: '/insights',
   quickInput: '/quick-input/parse',
   quickInputVoice: '/quick-input/voice',
+  quickInputReceipt: '/quick-input/receipt',
+  exportXlsx: '/export/transactions.xlsx',
   exportCsv: '/export/transactions.csv',
   exportHtml: '/export/monthly-report.html',
   syncChanges: '/sync/changes',

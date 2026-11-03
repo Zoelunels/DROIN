@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.droin.app"
@@ -14,7 +14,7 @@
     "android": {
       "package": "com.droin.app",
       "adaptiveIcon": {
-        "backgroundColor": "#F7F4ED",
+        "backgroundColor": "#E8A04A",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -44,6 +44,14 @@
           "resizeMode": "contain",
           "backgroundColor": "#F7F4ED",
           "imageWidth": 200
+        }
+      ],
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "DROIN uses the camera only when you photograph a receipt.",
+          "photosPermission": "DROIN opens your photos only when you pick a receipt."
         }
       ]
     ],

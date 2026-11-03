@@ -59,10 +59,6 @@ export function monthLabel(month: string): string {
   return `${MONTHS_LONG[m - 1]}${year}`
 }
 
-/** The API stores icon names ("utensils") for default categories; only real emoji are shown. */
-export function asEmoji(icon: string | null | undefined): string | null {
-  return icon && !/^[a-z0-9-]+$/i.test(icon) ? icon : null
-}
 
 /** "1250000" → "1.250.000" — live formatting for amount fields. */
 export const groupDigits = (digits: string) => (digits ? String(Number(digits)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '')

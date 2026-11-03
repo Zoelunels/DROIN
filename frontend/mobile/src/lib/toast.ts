@@ -1,6 +1,8 @@
 // DROIN toasts: a tiny store the ToastHost (components/ui/Toast.tsx) listens to. Keeps microcopy
 // in one place so the app keeps its voice: "Into the drawer it goes." instead of "Saved".
 
+import type { IconName } from '@/components/ui/Icon'
+
 export type NotifyTone = 'brand' | 'success' | 'error'
 
 export interface ToastItem {
@@ -8,7 +10,7 @@ export interface ToastItem {
   title: string
   description?: string
   tone: NotifyTone
-  emoji: string
+  icon: IconName
 }
 
 const MAX_VISIBLE = 3
@@ -33,22 +35,22 @@ export function dismissToast(id: number) {
   emit()
 }
 
-function show(tone: NotifyTone, emoji: string, title: string, description?: string) {
-  items = [...items, { id: nextId++, title, description, tone, emoji }].slice(-MAX_VISIBLE)
+function show(tone: NotifyTone, icon: IconName, title: string, description?: string) {
+  items = [...items, { id: nextId++, title, description, tone, icon }].slice(-MAX_VISIBLE)
   emit()
 }
 
 export const notify = {
-  info(title: string, description?: string, emoji?: string) {
-    show('brand', emoji ?? '✨', title, description)
+  info(title: string, description?: string, icon?: IconName) {
+    show('brand', icon ?? 'info', title, description)
   },
-  success(title: string, description?: string, emoji?: string) {
-    show('success', emoji ?? '🎉', title, description)
+  success(title: string, description?: string, icon?: IconName) {
+    show('success', icon ?? 'check-circle', title, description)
   },
-  error(title: string, description?: string, emoji?: string) {
-    show('error', emoji ?? '😵', title, description)
+  error(title: string, description?: string, icon?: IconName) {
+    show('error', icon ?? 'alert', title, description)
   },
   saved(what = 'Entry') {
-    show('success', '🗄️', `${what} tucked in!`, 'Into the drawer it goes.')
+    show('success', 'archive', `${what} tucked in!`, 'Into the drawer it goes.')
   },
 }

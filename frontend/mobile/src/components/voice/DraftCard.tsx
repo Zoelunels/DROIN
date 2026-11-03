@@ -1,9 +1,12 @@
-import React from 'react'
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { Colors } from '@/constants/colors'
-import { categoryEmoji, walletEmoji } from '@/lib/emoji'
-import { asEmoji, dayLabel, groupDigits as thousands, localDate } from '@/lib/display'
-import type { Category, QuickDraft, TransactionType, Wallet } from '@/types/api'
+import React, { useState } from 'react'
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native'
+import { CategoryField, CategoryPicker } from '@/components/CategoryPicker'
+import { TypeToggle } from '@/components/ui/TypeToggle'
+import { card, Fonts, makeStyles, useColors, type Palette } from '@/constants/colors'
+import { Icon, type IconName } from '@/components/ui/Icon'
+import { walletIconName } from '@/lib/icons'
+import { dayLabel, groupDigits as thousands, localDate } from '@/lib/display'
+import type { Category, QuickDraft, Transaction, TransactionType, Wallet } from '@/types/api'
 
 /** A parsed draft the user can fix before saving. Amount is kept as typed digits. */
 export interface EditableDraft {
@@ -35,6 +38,20 @@ export function toEditable(draft: QuickDraft): EditableDraft {
   }
 }
 
+/** A saved transaction, opened for editing (nothing is a guess). */
+export function fromTransaction(t: Transaction): EditableDraft {
+  return {
+    key: `edit-${t.id}`,
+    amountText: String(Math.round(t.amount)),
+    type: t.type,
+    categoryId: t.category_id,
+    walletId: t.wallet_id,
+    date: t.transaction_date,
+    note: t.note ?? '',
+    guessed: { amount: false, category: false, wallet: false },
+  }
+}
+
 export function draftAmount(d: EditableDraft) {
   return Number(d.amountText || 0)
 }
@@ -49,27 +66,29 @@ export function draftProblem(d: EditableDraft): string | null {
 
 
 type ChipTone = 'neutral' | 'income' | 'expense' | 'brand'
-const CHIP_ACTIVE: Record<ChipTone, string> = {
-  neutral: Colors.charcoal,
-  income: Colors.income,
-  expense: Colors.expense,
-  brand: Colors.orange,
+const CHIP_ACTIVE: Record<ChipTone, keyof Palette> = {
+  neutral: 'charcoal',
+  income: 'income',
+  expense: 'expense',
+  brand: 'orange',
 }
 
 /** A selectable chip: 36 px tall, 10 px radius, filled when picked. */
 function Chip({
   label,
-  emoji,
+  icon,
   active,
   tone = 'neutral',
   onPress,
 }: {
   label: string
-  emoji?: string | null
+  icon?: IconName | null
   active?: boolean
   tone?: ChipTone
   onPress?: () => void
 }) {
+  const Colors = useColors()
+  const styles = useStyles()
   return (
     <Pressable
       onPress={onPress}
@@ -78,12 +97,12 @@ function Chip({
       accessibilityState={{ selected: !!active }}
       style={({ pressed }) => [
         styles.chip,
-        active && { backgroundColor: CHIP_ACTIVE[tone], borderColor: CHIP_ACTIVE[tone] },
+        active && { backgroundColor: Colors[CHIP_ACTIVE[tone]], borderColor: Colors[CHIP_ACTIVE[tone]] },
         pressed && !active && styles.chipPressed,
       ]}
     >
-      {emoji ? <Text style={styles.chipEmoji}>{emoji}</Text> : null}
-      <Text numberOfLines={1} style={[styles.chipText, active && styles.chipTextActive]}>
+      {icon ? <Icon name={icon} size={16} color={active ? (tone === 'brand' ? Colors.onOrange : Colors.surface) : Colors.charcoal} /> : null}
+      <Text numberOfLines={1} style={[styles.chipText, active && { color: tone === 'brand' ? Colors.onOrange : Colors.surface }]}>
         {label}
       </Text>
     </Pressable>
@@ -91,6 +110,7 @@ function Chip({
 }
 
 function Label({ children, hint }: { children: string; hint?: string | null }) {
+  const styles = useStyles()
   return (
     <View style={styles.labelRow}>
       <Text style={styles.label}>{children}</Text>
@@ -100,6 +120,7 @@ function Label({ children, hint }: { children: string; hint?: string | null }) {
 }
 
 function ChipRow({ children }: { children: React.ReactNode }) {
+  const styles = useStyles()
   return (
     <ScrollView
       horizontal
@@ -120,6 +141,7 @@ export function DraftCard({
   onChange,
   onRemove,
   onCreateWallet,
+  onCategoryCreated,
 }: {
   draft: EditableDraft
   wallets: Wallet[]
@@ -127,11 +149,12 @@ export function DraftCard({
   onChange: (patch: Partial<EditableDraft>) => void
   onRemove?: () => void
   onCreateWallet: () => void
+  onCategoryCreated: (category: Category) => void
 }) {
-  // The picked one first, so it is visible without scrolling.
-  const typeCategories = categories
-    .filter((c) => c.type === draft.type)
-    .sort((a, b) => Number(b.id === draft.categoryId) - Number(a.id === draft.categoryId))
+  const Colors = useColors()
+  const styles = useStyles()
+  const [pickingCategory, setPickingCategory] = useState(false)
+  const category = categories.find((c) => c.id === draft.categoryId) ?? null
   const sortedWallets = [...wallets].sort(
     (a, b) => Number(b.id === draft.walletId) - Number(a.id === draft.walletId),
   )
@@ -146,7 +169,7 @@ export function DraftCard({
   if (draft.saved) {
     return (
       <View style={[styles.card, styles.savedCard]}>
-        <Text style={styles.savedEmoji}>🗄️</Text>
+        <Icon name="check-circle" size={20} color={Colors.income} strokeWidth={2.4} />
         <Text style={styles.savedText} numberOfLines={1}>
           {draft.note || 'Entry'} · Rp {thousands(draft.amountText)}
         </Text>
@@ -158,24 +181,7 @@ export function DraftCard({
   return (
     <View style={styles.card}>
       <View style={styles.topRow}>
-        <View style={styles.segment}>
-          {(['expense', 'income'] as const).map((t) => {
-            const on = draft.type === t
-            return (
-              <Pressable
-                key={t}
-                onPress={() => on || onChange({ type: t, categoryId: null })}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                style={[styles.segmentItem, on && styles.segmentItemOn]}
-              >
-                <Text style={[styles.segmentText, on && { color: t === 'income' ? Colors.income : Colors.expense }]}>
-                  {t === 'income' ? 'Got' : 'Spent'}
-                </Text>
-              </Pressable>
-            )
-          })}
-        </View>
+        <TypeToggle value={draft.type} onChange={(type) => onChange({ type, categoryId: null })} />
         {onRemove ? (
           <Pressable onPress={onRemove} hitSlop={10} accessibilityRole="button">
             {({ pressed }) => <Text style={[styles.remove, pressed && { opacity: 0.5 }]}>Remove</Text>}
@@ -193,7 +199,7 @@ export function DraftCard({
             onChangeText={(t) => onChange({ amountText: t.replace(/\D/g, '').slice(0, 13) })}
             keyboardType="number-pad"
             placeholder="0"
-            placeholderTextColor="#C9C3B9"
+            placeholderTextColor={Colors.placeholder}
             selectionColor={Colors.orange}
           />
         </View>
@@ -201,18 +207,16 @@ export function DraftCard({
 
       <View style={styles.field}>
         <Label hint={draft.guessed.category && !draft.categoryId ? 'Pick one' : null}>Category</Label>
-        <ChipRow>
-          {typeCategories.map((c) => (
-            <Chip
-              key={c.id}
-              label={c.name}
-              emoji={asEmoji(c.icon) ?? categoryEmoji(c.name)}
-              active={c.id === draft.categoryId}
-              tone={income ? 'income' : 'expense'}
-              onPress={() => onChange({ categoryId: c.id, guessed: { ...draft.guessed, category: false } })}
-            />
-          ))}
-        </ChipRow>
+        <CategoryField category={category} hint={!category ? 'pick' : null} onPress={() => setPickingCategory(true)} />
+        <CategoryPicker
+          visible={pickingCategory}
+          type={draft.type}
+          categories={categories}
+          selectedId={draft.categoryId}
+          onSelect={(c) => onChange({ categoryId: c.id, guessed: { ...draft.guessed, category: false } })}
+          onCreated={onCategoryCreated}
+          onClose={() => setPickingCategory(false)}
+        />
       </View>
 
       <View style={styles.field}>
@@ -222,13 +226,13 @@ export function DraftCard({
             <Chip
               key={w.id}
               label={w.name}
-              emoji={asEmoji(w.icon) ?? walletEmoji(w.name, w.wallet_type)}
+              icon={walletIconName(w)}
               active={w.id === draft.walletId}
               onPress={() => onChange({ walletId: w.id, guessed: { ...draft.guessed, wallet: false } })}
             />
           ))}
           {wallets.length === 0 ? (
-            <Chip label="Make a Cash wallet" emoji="➕" tone="brand" active onPress={onCreateWallet} />
+            <Chip label="Make a Cash wallet" icon="add" tone="brand" active onPress={onCreateWallet} />
           ) : null}
         </ChipRow>
       </View>
@@ -250,7 +254,7 @@ export function DraftCard({
           value={draft.note}
           onChangeText={(t) => onChange({ note: t.slice(0, 500) })}
           placeholder="What was it?"
-          placeholderTextColor="#ABA59C"
+          placeholderTextColor={Colors.placeholder}
           selectionColor={Colors.orange}
         />
       </View>
@@ -261,36 +265,17 @@ export function DraftCard({
 // Web only: hide the browser focus outline. Native has no "none" outline value.
 const WEB_NO_OUTLINE = Platform.select({ web: { outlineStyle: 'none' }, default: {} })
 
-const styles = StyleSheet.create({
-  card: {
-    gap: 16,
-    padding: 16,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: Colors.borderLight,
-    backgroundColor: Colors.white,
-  },
+const useStyles = makeStyles((Colors) => ({
+  card: { gap: 16, padding: 16, ...card(Colors) },
   savedCard: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, backgroundColor: Colors.cream },
-  savedEmoji: { fontSize: 18 },
-  savedText: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.charcoal },
-  savedBadge: { fontSize: 13, fontWeight: '700', color: Colors.income },
+  savedText: { flex: 1, fontSize: 15, fontFamily: Fonts.bold, color: Colors.charcoal },
+  savedBadge: { fontSize: 13, fontFamily: Fonts.extrabold, color: Colors.income },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  segment: { flexDirection: 'row', padding: 3, borderRadius: 12, backgroundColor: Colors.cream },
-  segmentItem: { paddingHorizontal: 16, height: 32, borderRadius: 9, justifyContent: 'center' },
-  segmentItemOn: {
-    backgroundColor: Colors.white,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  segmentText: { fontSize: 14, fontWeight: '700', color: Colors.secondaryGray },
-  remove: { fontSize: 14, fontWeight: '600', color: Colors.secondaryGray },
+  remove: { fontSize: 14, fontFamily: Fonts.semibold, color: Colors.secondaryGray },
   field: { gap: 8 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  label: { fontSize: 13, fontWeight: '600', color: Colors.secondaryGray },
-  labelHint: { fontSize: 12, fontWeight: '700', color: '#C9853A' },
+  label: { fontSize: 12, fontFamily: Fonts.extrabold, color: Colors.muted, textTransform: 'uppercase', letterSpacing: 0.8 },
+  labelHint: { fontSize: 12, fontFamily: Fonts.extrabold, color: Colors.orangeDeep },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -298,11 +283,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1.5,
     borderBottomColor: Colors.borderLight,
   },
-  currency: { fontSize: 24, fontWeight: '800' },
+  currency: { fontSize: 24, fontFamily: Fonts.black },
   amount: {
     flex: 1,
-    fontSize: 32,
-    fontWeight: '800',
+    fontSize: 36,
+    fontFamily: Fonts.black,
     color: Colors.charcoal,
     paddingVertical: 4,
     letterSpacing: -0.5,
@@ -321,14 +306,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1.5,
     borderColor: Colors.borderLight,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.surface,
   },
   chipPressed: { backgroundColor: Colors.cream },
-  chipEmoji: { fontSize: 15 },
-  chipText: { fontSize: 14, fontWeight: '600', color: Colors.charcoal },
-  chipTextActive: { color: Colors.white },
+  chipText: { fontSize: 14, fontFamily: Fonts.bold, color: Colors.charcoal },
   note: {
-    height: 46,
+    fontFamily: Fonts.regular, height: 46,
     paddingHorizontal: 12,
     borderRadius: 12,
     backgroundColor: Colors.cream,
@@ -337,4 +320,4 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     ...WEB_NO_OUTLINE,
   } as object,
-})
+}))

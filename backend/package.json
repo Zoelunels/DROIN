@@ -8,6 +8,7 @@
     "start": "bun src/index.ts",
     "migrate": "bun scripts/migrate.ts",
     "set-password": "bun scripts/set-password.ts",
+    "ocr": "bun scripts/ocr-service.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "db:up": "docker compose up -d",
@@ -16,7 +17,10 @@
   "dependencies": {
     "@hono/swagger-ui": "^0.6.1",
     "hono": "^4.13.9",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "sharp": "0.34.3",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^1.9.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

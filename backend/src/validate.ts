@@ -31,7 +31,7 @@ export function requireString(value: unknown, field: string, maxLength = 100): s
 
 // null/undefined/"" → null; otherwise it must be a string.
 export function optionalString(value: unknown, field: string, maxLength = 1000): string | null {
-  if (value === undefined || value === null) return null;
+  if (value === undefined || value === null) return null; 
   if (typeof value !== "string") throw new HttpError(400, `${field} must be text`);
   if (value.trim().length > maxLength) {
     throw new HttpError(400, `${field} must be at most ${maxLength} characters`);
@@ -124,11 +124,16 @@ export function optionalColor(value: unknown, field = "color"): string | null {
   return value.toUpperCase();
 }
 
-// Icon names are free-form keys the app maps to its own icon set (e.g. "utensils", "bus").
+// An icon is either a key the app maps to its own icon set (e.g. "utensils", "bus") or one emoji the
+// user picked ("🍜", "👩‍💻", "🇮🇩"), including skin tones and joined sequences.
+const ICON_KEY = /^[a-z0-9-]{1,50}$/;
+const ONE_EMOJI =
+  /^(?:\p{Regional_Indicator}{2}|[\p{Extended_Pictographic}\p{Emoji_Presentation}][️\p{Emoji_Modifier}]*(?:‍[\p{Extended_Pictographic}\p{Emoji_Presentation}][️\p{Emoji_Modifier}]*)*)$/u;
+
 export function optionalIcon(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return null;
-  if (typeof value !== "string" || !/^[a-z0-9-]{1,50}$/.test(value)) {
-    throw new HttpError(400, "icon must be lowercase letters, digits or dashes (max 50)");
+  if (typeof value !== "string" || !(ICON_KEY.test(value) || (value.length <= 32 && ONE_EMOJI.test(value)))) {
+    throw new HttpError(400, "icon must be one emoji, or lowercase letters, digits or dashes (max 50)");
   }
   return value;
 }
