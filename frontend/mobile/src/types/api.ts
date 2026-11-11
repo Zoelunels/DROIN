@@ -138,6 +138,46 @@ export interface DailyReport {
   }>
 }
 
+/** GET /friends — people you split with often, and what they still owe you. */
+export interface Friend {
+  id: number
+  name: string
+  owes_you: number
+  created_at: string
+}
+
+/** A person on a split bill. `remaining` is what they still owe you. */
+export interface SplitPerson {
+  id: number
+  position: number
+  name: string
+  is_me: boolean
+  friend_id: number | null
+  share: number
+  debt_id: number | null
+  remaining: number
+  status: 'me' | 'owes' | 'settled' | 'removed'
+}
+
+/** GET /splits/:id — a receipt you paid and shared. */
+export interface Split {
+  id: number
+  title: string
+  total: number
+  split_date: string
+  wallet_id: number
+  wallet_name: string
+  category_id: number
+  category_name: string
+  category_icon: string | null
+  transaction_id: number | null
+  items: { name: string; amount: number; people: number[] }[]
+  people: SplitPerson[]
+  my_share: number
+  owed_to_me: number
+  settled: boolean
+}
+
 export interface Debt {
   id: number
   direction: DebtDirection

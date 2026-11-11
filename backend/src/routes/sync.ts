@@ -10,6 +10,7 @@ export const syncRouter = new Hono<AppEnv>();
 const TABLES = [
   "wallets", "categories", "transfers", "budgets", "recurring_rules",
   "goals", "goal_contributions", "debts", "debt_payments", "tags", "attachments",
+  "friends", "splits", "split_people",
 ] as const;
 
 // A transaction that commits slightly after another one can carry an older updated_at.

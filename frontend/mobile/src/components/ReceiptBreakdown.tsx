@@ -11,7 +11,8 @@ export interface EditableItem {
   amountText: string
 }
 
-export type SaveMode = 'one' | 'split'
+/** one: a single entry · split: one entry per item · bill: shared with friends (a split bill) */
+export type SaveMode = 'one' | 'split' | 'bill'
 
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -118,27 +119,31 @@ export function ReceiptBreakdown({
             </View>
           ) : null}
         </>
-      ) : (
+      ) : mode === 'split' ? (
         <Text style={styles.splitHint}>Each item is its own entry below. Pick a category for each, or change the amounts.</Text>
+      ) : (
+        <Text style={styles.splitHint}>Shared with friends: pick who had what below.</Text>
       )}
 
       <Text style={styles.saveLabel}>Save as</Text>
       <View style={styles.segment} accessibilityRole="radiogroup">
         {(
           [
-            ['one', 'One entry', 'Items listed in the note'],
-            ['split', 'Separate entries', `${items.length} entries, one per item`],
+            ['one', 'One entry', 'Items in the note'],
+            ['split', 'Per item', `${items.length} entries`],
+            ['bill', 'Split bill', 'With friends'],
           ] as const
         ).map(([value, label, hint]) => {
           const on = mode === value
+          const off = value === 'split' && items.length < 2
           return (
             <Pressable
               key={value}
               onPress={() => on || onModeChange(value)}
-              disabled={value === 'split' && items.length < 2}
+              disabled={off}
               accessibilityRole="radio"
-              accessibilityState={{ selected: on, disabled: value === 'split' && items.length < 2 }}
-              style={[styles.option, on && styles.optionOn, value === 'split' && items.length < 2 && { opacity: 0.45 }]}
+              accessibilityState={{ selected: on, disabled: off }}
+              style={[styles.option, on && styles.optionOn, off && { opacity: 0.45 }]}
             >
               <Text style={[styles.optionLabel, on && styles.optionLabelOn]}>{label}</Text>
               <Text style={[styles.optionHint, on && styles.optionHintOn]} numberOfLines={1}>

@@ -20,6 +20,7 @@ import { goalsRouter } from "./routes/goals";
 import { insightsRouter, quickInputRouter } from "./routes/insights";
 import { notificationsRouter } from "./routes/notifications";
 import { recurringRouter } from "./routes/recurring";
+import { friendsRouter, splitsRouter } from "./routes/splits";
 import { reportsRouter } from "./routes/reports";
 import { syncRouter } from "./routes/sync";
 import { tagsRouter } from "./routes/tags";
@@ -72,6 +73,8 @@ const protectedRoutes: [string, Hono<AppEnv>][] = [
   ["/recurring", recurringRouter],
   ["/goals", goalsRouter],
   ["/debts", debtsRouter],
+  ["/splits", splitsRouter],
+  ["/friends", friendsRouter],
   ["/tags", tagsRouter],
   ["/insights", insightsRouter],
   ["/quick-input", quickInputRouter],

@@ -26,6 +26,8 @@ export const Endpoints = {
   goals: '/goals',
   debts: '/debts',
   debtsSummary: '/debts/summary',
+  splits: '/splits',
+  friends: '/friends',
   tags: '/tags',
   insights: '/insights',
   quickInput: '/quick-input/parse',

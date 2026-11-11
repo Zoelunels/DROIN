@@ -143,6 +143,7 @@ export default function Me() {
       </View>
 
       <View style={styles.card}>
+        <ActionRow icon="people" title="Split bills" subtitle="Who owes you, and marking them paid back" onPress={() => router.push('/splits')} />
         <ActionRow icon="tags" title="Categories" subtitle="Add your own, rename, change icons, hide" onPress={() => router.push('/categories')} />
         <ActionRow
           icon="document"

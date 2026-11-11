@@ -61,6 +61,7 @@ bun run set-password owner@localhost <new-password>
 | Recurring | `/recurring` | auto-create or confirm/skip; the scheduler runs due rules every 10 minutes |
 | Goals | `/goals` | deposits/withdrawals, progress, monthly amount needed |
 | Debts | `/debts` | payable/receivable, repayments, optional wallet movements |
+| Split bills | `/splits`, `/friends` | a paid receipt shared by who had what (tax/service in proportion); your share is an expense, friends' shares are debts you mark as paid back |
 | Tags | `/tags` | created on the fly from transactions |
 | Insights | `/insights` | spending pace, budget alerts, savings rate, due debts/goals, "Nothing happened here. Suspicious." |
 | Quick input | `/quick-input/parse`, `/quick-input/receipt`, `/quick-input/voice` | "makan 25k gopay kemarin" → a transaction draft; receipt or invoice photo → draft via free, private, local OCR (PaddleOCR service, Tesseract fallback), invoice PDFs read from their text; voice: a recording → transcript + drafts (needs `STT_API_KEY`) |

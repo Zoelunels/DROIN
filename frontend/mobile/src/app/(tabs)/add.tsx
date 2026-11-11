@@ -4,6 +4,7 @@ import { Icon, type IconName } from '@/components/ui/Icon'
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { Mascot } from '@/components/Mascot'
 import { ReceiptBreakdown, itemsNote, toEditableItems, type EditableItem, type SaveMode } from '@/components/ReceiptBreakdown'
+import { SplitBill } from '@/components/SplitBill'
 import { DraftCard, draftAmount, draftProblem, toEditable, type EditableDraft } from '@/components/voice/DraftCard'
 import { MicButton } from '@/components/voice/MicButton'
 import { Button } from '@/components/ui/Button'
@@ -17,8 +18,9 @@ import { MAX_RECORDING_MS, useVoiceRecorder } from '@/hooks/useVoiceRecorder'
 import { ApiError, api } from '@/lib/api'
 import { money } from '@/lib/display'
 import { attachReceipt, fileField, pickInvoicePdf, pickReceiptPhoto, scanReceipt, type ReceiptFile } from '@/lib/receipt'
+import { ME_KEY, billItems, billProblem, startBill, type BillState } from '@/lib/split'
 import { notify } from '@/lib/toast'
-import type { Category, QuickDraft, Transaction, VoiceResult, Wallet } from '@/types/api'
+import type { Category, QuickDraft, Split, Transaction, VoiceResult, Wallet } from '@/types/api'
 
 type Phase = 'idle' | 'recording' | 'sending' | 'review'
 type Problem = { kind: 'permission' | 'blocked' | 'camera' | 'empty' | 'offline' | 'unavailable' | 'soon' | 'other'; message: string }
@@ -64,8 +66,9 @@ export default function Voice() {
   const [busyLabel, setBusyLabel] = useState('Writing that down…')
   // The scanned receipt photo or invoice PDF, kept on this device until the entry is saved. `keep` off
   // is "scan only": its numbers are used, the file isn't uploaded. `items` is the line-by-line
-  // breakdown; `mode` saves it as one entry (items in the note) or one entry per item. `base` is the
-  // receipt's own draft, kept so switching back from separate entries restores it.
+  // breakdown; `mode` saves it as one entry (items in the note), one entry per item, or a split bill
+  // shared with friends (`bill`: who's in it and who had what). `base` is the receipt's own draft,
+  // kept so switching back from separate entries restores it.
   const [receipt, setReceipt] = useState<{
     file: ReceiptFile
     draftKey: string
@@ -74,6 +77,7 @@ export default function Voice() {
     items: EditableItem[]
     mode: SaveMode
     base: EditableDraft
+    bill: BillState | null
   } | null>(null)
   const [showRead, setShowRead] = useState(false)
 
@@ -149,7 +153,7 @@ export default function Voice() {
       const scan = await scanReceipt(picked)
       const summary = [scan.merchant, scan.total ? money(scan.total) : null, scan.payment].filter(Boolean).join(' · ')
       const [draft] = showDrafts(summary || (scan.kind === 'invoice' ? 'Invoice' : 'Receipt'), [scan.draft], scan.kind)
-      setReceipt({ file: picked, draftKey: draft!.key, keep: true, text: scan.text, items: toEditableItems(scan.items ?? []), mode: 'one', base: draft! })
+      setReceipt({ file: picked, draftKey: draft!.key, keep: true, text: scan.text, items: toEditableItems(scan.items ?? []), mode: 'one', base: draft!, bill: null })
       setShowRead(false)
       if (!scan.total) notify.info("Couldn't spot the total.", `Type the amount from the ${scan.kind}.`, 'receipt')
     } catch (err) {
@@ -264,6 +268,7 @@ export default function Voice() {
   }
 
   async function saveAll() {
+    if (receipt?.mode === 'bill') return saveBill()
     const pending = drafts.filter((d) => !d.saved)
     const blocker = pending.map(draftProblem).find(Boolean)
     if (blocker) {
@@ -327,22 +332,86 @@ export default function Voice() {
   const update = (key: string, patch: Partial<EditableDraft>) =>
     setDrafts((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)))
 
-  /** One entry for the receipt, or one entry per item (same wallet, category and date to start with). */
+  /** One entry, one entry per item (same wallet, category and date to start with), or a split bill. */
   function setSaveMode(mode: SaveMode) {
     if (!receipt) return
+    let base = receipt
+    if (receipt.mode === 'split') {
+      // Leaving "per item": the separate entries become the breakdown again (with any edits made there).
+      const items = drafts.map((d) => ({ key: d.key, name: d.note, amountText: d.amountText }))
+      setDrafts([receipt.base])
+      base = { ...receipt, items, draftKey: receipt.base.key }
+    }
     if (mode === 'split') {
-      const current = drafts.find((d) => d.key === receipt.draftKey) ?? receipt.base
+      const current = drafts.find((d) => d.key === base.draftKey) ?? base.base
       const stamp = Date.now().toString(36)
-      const split = receipt.items
+      const split = base.items
         .filter((i) => Number(i.amountText) > 0)
         .map((i, n) => ({ ...current, key: `${current.key}-${stamp}-${n}`, amountText: i.amountText, note: i.name.trim(), guessed: { ...current.guessed, amount: false } }))
       setDrafts(split)
-      setReceipt({ ...receipt, mode, base: current })
+      setReceipt({ ...base, mode, base: current })
     } else {
-      // Back to one entry: the separate entries become the breakdown again (with any edits made there).
-      const items = drafts.map((d) => ({ key: d.key, name: d.note, amountText: d.amountText }))
-      setDrafts([receipt.base])
-      setReceipt({ ...receipt, mode, items, draftKey: receipt.base.key })
+      setReceipt({ ...base, mode, bill: mode === 'bill' ? base.bill ?? startBill(base.items) : base.bill })
+    }
+  }
+
+  /** The split bill as it will be saved: its lines, and who had each (new lines start with you). */
+  function billOf(r: NonNullable<typeof receipt>, d: EditableDraft | undefined) {
+    const total = d ? draftAmount(d) : 0
+    const items = billItems(r.items, total, d?.note.trim() ?? '')
+    const bill = r.bill ?? startBill(items)
+    const assign = Object.fromEntries(items.map((i) => [i.key, bill.assign[i.key] ?? [ME_KEY]]))
+    return { items, total, bill: { ...bill, assign } }
+  }
+
+  async function saveBill() {
+    if (!receipt) return
+    const d = drafts.find((x) => x.key === receipt.draftKey)
+    if (!d) return
+    const { items, total, bill } = billOf(receipt, d)
+    const blocker = draftProblem(d) ?? (d.type !== 'expense' ? 'A split bill is for spending: switch the entry to Expense.' : null) ?? billProblem(items, bill, total)
+    if (blocker) {
+      notify.info(blocker, undefined, 'edit')
+      return
+    }
+    setSaving(true)
+    try {
+      const created = await api.post<Split>(
+        Endpoints.splits,
+        {
+          title: (d.note.trim() || 'Split bill').slice(0, 100),
+          total,
+          split_date: d.date,
+          wallet_id: d.walletId,
+          category_id: d.categoryId,
+          people: bill.people.map((p) => ({
+            name: p.me ? 'You' : p.name,
+            me: p.me || undefined,
+            friend_id: p.friendId ?? undefined,
+            save_as_friend: p.save || undefined,
+          })),
+          items: items.map((i) => ({
+            name: i.name.trim() || 'Item',
+            amount: Number(i.amountText),
+            people: bill.assign[i.key]!.map((k) => bill.people.findIndex((p) => p.key === k)),
+          })),
+        },
+        { 'Idempotency-Key': d.key },
+      )
+      // The photo goes with your own share's entry (there is none if you only paid for others).
+      if (receipt.keep && created.transaction_id) {
+        await attachReceipt(created.transaction_id, receipt.file).catch(() =>
+          notify.info('Saved, but the receipt photo didn’t upload.', 'Open your entry to add it again.', 'receipt'),
+        )
+      }
+      const others = created.people.filter((p) => !p.is_me).length
+      notify.success('Split saved.', `${others === 1 ? created.people.find((p) => !p.is_me)!.name : `${others} people`} owe${others === 1 ? 's' : ''} you ${money(created.owed_to_me)}.`, 'people')
+      reset()
+      router.push({ pathname: '/splits/[id]', params: { id: String(created.id) } })
+    } catch (err) {
+      notify.error(problemFrom(err).message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -549,6 +618,24 @@ export default function Voice() {
               />
             ))}
 
+            {receipt && receipt.mode === 'bill' ? (
+              <>
+                <ReceiptBreakdown items={receipt.items} onChange={(items) => setReceipt({ ...receipt, items })} mode="bill" onModeChange={setSaveMode} entryAmount={0} />
+                {(() => {
+                  const { items, total, bill } = billOf(receipt, receiptDraft)
+                  return (
+                    <SplitBill
+                      items={items}
+                      total={total}
+                      bill={bill}
+                      onChange={(next) => setReceipt({ ...receipt, bill: next })}
+                      onFixItems={() => setSaveMode('one')}
+                    />
+                  )
+                })()}
+              </>
+            ) : null}
+
             {receipt && receipt.mode === 'one' ? (
               <ReceiptBreakdown
                 items={receipt.items}
@@ -560,7 +647,7 @@ export default function Voice() {
             ) : null}
 
             <Button
-              label={pendingCount > 1 ? `Put all ${pendingCount} in` : 'Put it in the drawer'}
+              label={receipt?.mode === 'bill' ? 'Save the split' : pendingCount > 1 ? `Put all ${pendingCount} in` : 'Put it in the drawer'}
               onPress={saveAll}
               loading={saving}
               disabled={pendingCount === 0}

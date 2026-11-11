@@ -41,6 +41,11 @@ tags:
   - name: Recurring
   - name: Goals
   - name: Debts
+  - name: Split bills
+    description: >-
+      A receipt you paid and shared. Each item is split evenly between whoever had it; tax, service and
+      discounts (total ≠ items) are spread in proportion; shares are whole rupiah and add up to the total.
+      Your share becomes an expense, everyone else's a receivable debt, all paid from one wallet.
   - name: Tags
   - name: Insights
   - name: Quick input
@@ -757,6 +762,102 @@ paths:
       - { name: paymentId, in: path, required: true, schema: { type: integer } }
     delete: { tags: [Debts], summary: Delete a repayment → the updated debt, responses: { "200": { description: OK } } }
 
+  # ---------------------------------------------------------------- Split bills
+  /splits:
+    get:
+      tags: [Split bills]
+      summary: Your split bills, newest first, with who still owes you
+      parameters: [{ $ref: "#/components/parameters/Limit" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Split" } } } } }
+    post:
+      tags: [Split bills]
+      summary: Split a bill you paid
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, total, wallet_id, category_id, people, items]
+              properties:
+                title: { type: string, example: Bakso Pak Kumis }
+                total: { type: number, description: What you paid for everyone, example: 60500 }
+                split_date: { type: string, format: date, description: "Default: today" }
+                wallet_id: { type: integer }
+                category_id: { type: integer, description: An expense category, for your share }
+                people:
+                  type: array
+                  minItems: 2
+                  description: Exactly one is you. A name without friend_id is a guest unless save_as_friend is set.
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: { type: string, example: Budi }
+                      me: { type: boolean }
+                      friend_id: { type: integer }
+                      save_as_friend: { type: boolean }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, amount, people]
+                    properties:
+                      name: { type: string, example: Bakso }
+                      amount: { type: number, example: 30000 }
+                      people: { type: array, items: { type: integer }, description: Positions in people of who had it, example: [0, 1] }
+      responses:
+        "201": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/Split" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /splits/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Split bills]
+      summary: One split, with everyone's share and status
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Split" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Split bills]
+      summary: Delete a split, undoing your expense, the debts and any paybacks
+      responses: { "204": { description: Deleted } }
+  /splits/{id}/people/{personId}/paid:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - { name: personId, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Split bills]
+      summary: That person paid you back everything they owe (into the split's wallet unless wallet_id is given)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                wallet_id: { type: integer }
+                payment_date: { type: string, format: date }
+      responses:
+        "200": { description: The updated split, content: { application/json: { schema: { $ref: "#/components/schemas/Split" } } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /friends:
+    get:
+      tags: [Split bills]
+      summary: Saved friends, with what each still owes you
+      responses: { "200": { description: OK } }
+    post:
+      tags: [Split bills]
+      summary: Save a friend
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string } } } } }
+      responses: { "201": { description: Saved }, "409": { $ref: "#/components/responses/Conflict" } }
+  /friends/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put: { tags: [Split bills], summary: Rename a friend, responses: { "200": { description: OK } } }
+    delete: { tags: [Split bills], summary: Remove a saved friend (their splits and debts stay), responses: { "204": { description: Deleted } } }
+
   # ---------------------------------------------------------------- Tags
   /tags:
     get: { tags: [Tags], summary: List tags with usage_count, responses: { "200": { description: OK } } }
@@ -1180,6 +1281,34 @@ components:
         overdue: { type: boolean }
         months_left: { type: integer, nullable: true }
         monthly_needed: { type: number, nullable: true }
+    Split:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        total: { type: number }
+        split_date: { type: string, format: date }
+        wallet_id: { type: integer }
+        category_id: { type: integer }
+        transaction_id: { type: integer, nullable: true, description: Your share's expense }
+        my_share: { type: number }
+        owed_to_me: { type: number }
+        settled: { type: boolean }
+        items: { type: array, items: { type: object, properties: { name: { type: string }, amount: { type: number }, people: { type: array, items: { type: integer } } } } }
+        people:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              position: { type: integer }
+              name: { type: string }
+              is_me: { type: boolean }
+              friend_id: { type: integer, nullable: true }
+              share: { type: number }
+              debt_id: { type: integer, nullable: true }
+              remaining: { type: number }
+              status: { type: string, enum: [me, owes, settled, removed] }
     Debt:
       type: object
       properties:

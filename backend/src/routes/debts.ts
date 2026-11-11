@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import type { PoolClient } from "pg";
 import type { AppEnv } from "../auth";
-import { assertActive, lockWallets } from "../balance";
+import { lockWallets } from "../balance";
 import { pool, withTransaction, type Db } from "../db";
 import { HttpError, readJson } from "../errors";
-import { deleteTransactionRow, insertTransaction, updateTransactionRow } from "../services/transactions";
+import { DIRECTIONS, addPayment, createDebt, deleteDebt, lockDebt, refreshSettled } from "../services/debts";
+import { deleteTransactionRow, updateTransactionRow } from "../services/transactions";
 import { todayIn } from "../time";
 import {
   optionalDate,
@@ -15,7 +15,6 @@ import {
   requireDate,
   requireEnum,
   requireString,
-  type TransactionType,
 } from "../validate";
 
 // Debts and loans (hutang/piutang).
@@ -25,17 +24,6 @@ import {
 // Money movements are transactions with origin 'debt' and no category, so they never count as
 // income or expense in reports.
 export const debtsRouter = new Hono<AppEnv>();
-
-type Direction = "payable" | "receivable";
-const DIRECTIONS: readonly Direction[] = ["payable", "receivable"];
-
-// Which way money moves for the opening (borrow/lend) and for repayments.
-function openingType(direction: Direction): TransactionType {
-  return direction === "payable" ? "income" : "expense";
-}
-function paymentType(direction: Direction): TransactionType {
-  return direction === "payable" ? "expense" : "income";
-}
 
 const SELECT_DEBT = `
   SELECT d.*, w.name AS wallet_name,
@@ -58,24 +46,6 @@ async function fetchDebt(db: Db, userId: number, timezone: string, id: number) {
     [id],
   );
   return { ...withStatus(rows[0], todayIn(timezone)), payments: payments.rows };
-}
-
-async function lockDebt(client: PoolClient, userId: number, id: number) {
-  const { rows } = await client.query("SELECT * FROM debts WHERE id = $1 AND user_id = $2 FOR UPDATE", [id, userId]);
-  if (rows.length === 0) throw new HttpError(404, "Debt not found");
-  return rows[0];
-}
-
-// Keep settled_at in sync with the payments.
-async function refreshSettled(client: PoolClient, debtId: number): Promise<void> {
-  await client.query(
-    `UPDATE debts d SET settled_at = CASE
-       WHEN (SELECT COALESCE(SUM(amount), 0) FROM debt_payments WHERE debt_id = d.id) >= d.amount
-         THEN COALESCE(d.settled_at, now())
-       ELSE NULL END
-     WHERE d.id = $1`,
-    [debtId],
-  );
 }
 
 // GET /debts?direction=payable|receivable&status=open|settled|overdue
@@ -136,21 +106,8 @@ debtsRouter.post("/", async (c) => {
   if (dueDate !== null && dueDate < debtDate) throw new HttpError(400, "due_date cannot be before debt_date");
 
   const debt = await withTransaction(async (client) => {
-    let openingTxId: number | null = null;
-    if (walletId !== null) {
-      assertActive(await lockWallets(client, user.id, [walletId]), [walletId]);
-      openingTxId = await insertTransaction(client, {
-        userId: user.id, walletId, categoryId: null, type: openingType(direction), amount,
-        note: `${direction === "payable" ? "Borrowed from" : "Lent to"} ${counterparty}`,
-        transactionDate: debtDate, origin: "debt",
-      });
-    }
-    const { rows } = await client.query(
-      `INSERT INTO debts (user_id, direction, counterparty, amount, debt_date, due_date, note, wallet_id, opening_transaction_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [user.id, direction, counterparty, amount, debtDate, dueDate, note, walletId, openingTxId],
-    );
-    return fetchDebt(client, user.id, user.timezone, rows[0].id);
+    const id = await createDebt(client, user.id, { direction, counterparty, amount, debtDate, dueDate, note, walletId });
+    return fetchDebt(client, user.id, user.timezone, id);
   });
   return c.json(debt, 201);
 });
@@ -193,19 +150,7 @@ debtsRouter.put("/:id", async (c) => {
 debtsRouter.delete("/:id", async (c) => {
   const user = c.get("user");
   const id = parseId(c.req.param("id"));
-  await withTransaction(async (client) => {
-    const old = await lockDebt(client, user.id, id);
-    const payments = await client.query("SELECT wallet_id, transaction_id FROM debt_payments WHERE debt_id = $1", [id]);
-    const walletIds = [old.wallet_id, ...payments.rows.map((p) => p.wallet_id)].filter((w): w is number => w !== null);
-    if (walletIds.length > 0) await lockWallets(client, user.id, walletIds);
-
-    // Delete the rows that reference the transactions first (FKs), then the transactions.
-    await client.query("DELETE FROM debt_payments WHERE debt_id = $1", [id]);
-    await client.query("DELETE FROM debts WHERE id = $1", [id]);
-    for (const txId of [old.opening_transaction_id, ...payments.rows.map((p) => p.transaction_id)]) {
-      if (txId) await deleteTransactionRow(client, txId);
-    }
-  });
+  await withTransaction((client) => deleteDebt(client, user.id, id));
   return c.body(null, 204);
 });
 
@@ -220,28 +165,7 @@ debtsRouter.post("/:id/payments", async (c) => {
   const note = optionalString(body?.note, "note");
 
   const debt = await withTransaction(async (client) => {
-    const old = await lockDebt(client, user.id, id);
-    const paid = await client.query("SELECT COALESCE(SUM(amount), 0) AS paid FROM debt_payments WHERE debt_id = $1", [id]);
-    const remaining = Math.round((old.amount - paid.rows[0].paid) * 100) / 100;
-    if (remaining <= 0) throw new HttpError(409, "This debt is already settled");
-    if (amount > remaining) throw new HttpError(400, `amount is more than what is left (${remaining})`);
-
-    let txId: number | null = null;
-    if (walletId !== null) {
-      assertActive(await lockWallets(client, user.id, [walletId]), [walletId]);
-      txId = await insertTransaction(client, {
-        userId: user.id, walletId, categoryId: null, type: paymentType(old.direction), amount,
-        note: `${old.direction === "payable" ? "Repaid" : "Repayment from"} ${old.counterparty}`,
-        transactionDate: paymentDate, origin: "debt",
-      });
-    }
-    await client.query(
-      `INSERT INTO debt_payments (user_id, debt_id, amount, payment_date, note, wallet_id, transaction_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [user.id, id, amount, paymentDate, note, walletId, txId],
-    );
-    await refreshSettled(client, id);
-    await client.query("UPDATE debts SET updated_at = now() WHERE id = $1", [id]);
+    await addPayment(client, user.id, id, { amount, paymentDate, walletId, note });
     return fetchDebt(client, user.id, user.timezone, id);
   });
   return c.json(debt, 201);
