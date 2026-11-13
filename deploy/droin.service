@@ -1,0 +1,22 @@
+# systemd service for the DROIN backend (installed by deploy/install.sh).
+#   status:   systemctl status droin
+#   logs:     journalctl -u droin -f
+#   restart:  systemctl restart droin
+[Unit]
+Description=DROIN backend (Bun) with its PaddleOCR receipt reader
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+User=droin
+WorkingDirectory=/home/droin/droin/backend
+ExecStart=/home/droin/.bun/bin/bun src/index.ts
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=3
+# Stopping the service also stops the OCR process the backend started.
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

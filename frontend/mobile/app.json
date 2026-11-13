@@ -53,7 +53,8 @@
           "cameraPermission": "DROIN uses the camera only when you photograph a receipt.",
           "photosPermission": "DROIN opens your photos only when you pick a receipt."
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

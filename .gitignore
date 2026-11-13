@@ -44,3 +44,6 @@ desktop.ini
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Deploy archive made for scp to the server (deploy/DEPLOY.md, step 1)
+*.tgz
