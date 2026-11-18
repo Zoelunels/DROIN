@@ -54,7 +54,8 @@
           "photosPermission": "DROIN opens your photos only when you pick a receipt."
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "./plugins/withLocalAndroidBuild"
     ],
     "experiments": {
       "typedRoutes": true
