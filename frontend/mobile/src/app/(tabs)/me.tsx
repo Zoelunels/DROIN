@@ -7,7 +7,6 @@ import { Mascot, Wordmark } from '@/components/Mascot'
 import { PageTitle } from '@/components/ui/Section'
 import { Button } from '@/components/ui/Button'
 import { Screen } from '@/components/ui/Screen'
-import { API_BASE_URL } from '@/constants/api'
 import { card, Fonts, makeStyles, useColors, useTheme, type ThemePreference } from '@/constants/colors'
 import { ApiError } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -100,6 +99,7 @@ function ActionRow({
 }
 
 export default function Me() {
+  const Colors = useColors()
   const styles = useStyles()
   const { user, logout } = useAuth()
   const [leaving, setLeaving] = useState(false)
@@ -128,7 +128,12 @@ export default function Me() {
     <Screen inTabs bottomSpace={24}>
       <PageTitle eyebrow="Your drawer" title="Me" />
 
-      <View style={styles.profile}>
+      <Pressable
+        onPress={() => router.push('/profile')}
+        accessibilityRole="button"
+        accessibilityLabel="Edit your name and username"
+        style={({ pressed }) => [styles.profile, pressed && { opacity: 0.7 }]}
+      >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
@@ -136,14 +141,20 @@ export default function Me() {
           <Text style={styles.name} numberOfLines={1}>
             {user?.name}
           </Text>
+          {user?.username ? (
+            <Text style={styles.username} numberOfLines={1}>
+              @{user.username}
+            </Text>
+          ) : null}
           <Text style={styles.email} numberOfLines={1}>
             {user?.email}
           </Text>
         </View>
-      </View>
+        <Icon name="edit" size={18} color={Colors.secondaryGray} />
+      </Pressable>
 
       <View style={styles.card}>
-        <ActionRow icon="people" title="Split bills" subtitle="Who owes you, and marking them paid back" onPress={() => router.push('/splits')} />
+        <ActionRow icon="people" title="Split bills" subtitle="Who owes you, and bills friends shared with you" onPress={() => router.push('/splits')} />
         <ActionRow icon="tags" title="Categories" subtitle="Add your own, rename, change icons, hide" onPress={() => router.push('/categories')} />
         <ActionRow
           icon="document"
@@ -160,7 +171,6 @@ export default function Me() {
       <View style={styles.card}>
         <Row label="Timezone" value={user?.timezone ?? '–'} />
         <Row label="Daily reminder" value={user?.reminder_enabled ? `On, ${user.reminder_time}` : 'Off'} />
-        <Row label="Server" value={API_BASE_URL.replace(/^https?:\/\//, '')} />
         <Row label="App version" value={Constants.expoConfig?.version ?? '1.0.0'} last />
       </View>
 
@@ -198,6 +208,7 @@ const useStyles = makeStyles((Colors) => ({
   avatarText: { fontSize: 24, fontFamily: Fonts.black, color: Colors.ink },
   profileText: { flex: 1, gap: 1 },
   name: { fontSize: 19, fontFamily: Fonts.black, color: Colors.charcoal },
+  username: { fontFamily: Fonts.extrabold, fontSize: 14, color: Colors.orangeDeep },
   email: { fontFamily: Fonts.semibold, fontSize: 14, color: Colors.secondaryGray },
   card: { paddingHorizontal: 16, ...card(Colors) },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingVertical: 14 },

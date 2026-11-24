@@ -114,8 +114,8 @@ export async function apiFetch<T = unknown>(
     clearTimeout(timer)
   }
 
-  // A 401 on a request that carried a token means the login is no longer valid. Login/register
-  // send no token, so their "wrong password" 401s are left to the form.
+  // A 401 on a request that carried a token means the login is no longer valid. Signing in sends
+  // no token, so its errors are left to the form.
   if (response.status === 401 && token) onUnauthorized?.()
 
   if (!response.ok) {

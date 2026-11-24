@@ -387,7 +387,8 @@ export default function Voice() {
           people: bill.people.map((p) => ({
             name: p.me ? 'You' : p.name,
             me: p.me || undefined,
-            friend_id: p.friendId ?? undefined,
+            friend_id: p.username ? undefined : (p.friendId ?? undefined),
+            username: p.username ?? undefined,
             save_as_friend: p.save || undefined,
           })),
           items: items.map((i) => ({

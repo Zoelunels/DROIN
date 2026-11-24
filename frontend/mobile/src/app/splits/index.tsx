@@ -11,24 +11,33 @@ import { useScreenData } from '@/hooks/useScreenData'
 import { ApiError, api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { dayLabel, money } from '@/lib/display'
-import type { Split } from '@/types/api'
+import type { SharedBill, Split } from '@/types/api'
 
 const errorText = (err: unknown) =>
   err instanceof ApiError ? (err.offline ? "Can't reach the drawer. Check your connection." : err.message) : 'The drawer jammed. Try again?'
 
-/** Every bill you split, newest first, and who still owes you. */
+/**
+ * Every bill you split, newest first, and who still owes you; plus bills friends paid and split with
+ * you (by your @username), which you can mark paid from here.
+ */
 export default function Splits() {
   const Colors = useColors()
   const styles = useStyles()
   const { isAuthenticated, isLoading } = useAuth()
-  const load = useCallback(() => api.get<Split[]>(Endpoints.splits), [])
+  const load = useCallback(async () => {
+    const [mine, shared] = await Promise.all([api.get<Split[]>(Endpoints.splits), api.get<SharedBill[]>(Endpoints.splitsShared)])
+    return { mine, shared }
+  }, [])
   const { data, error, refreshing, refresh, reload } = useScreenData(load)
 
   if (!isLoading && !isAuthenticated) return <Redirect href="/login" />
 
-  const owed = (data ?? []).reduce((sum, s) => sum + s.owed_to_me, 0)
-  const open = (data ?? []).filter((s) => !s.settled)
-  const done = (data ?? []).filter((s) => s.settled)
+  const mine = data?.mine ?? []
+  const owed = mine.reduce((sum, s) => sum + s.owed_to_me, 0)
+  const open = mine.filter((s) => !s.settled)
+  const done = mine.filter((s) => s.settled)
+  const shared = data?.shared ?? []
+  const iOwe = shared.reduce((sum, b) => sum + b.remaining, 0)
 
   return (
     <Screen
@@ -50,21 +59,34 @@ export default function Splits() {
         </View>
       ) : !data ? (
         <ActivityIndicator color={Colors.orange} style={styles.spinner} />
-      ) : data.length === 0 ? (
+      ) : mine.length === 0 && shared.length === 0 ? (
         <EmptyState
           title="No splits yet."
-          subtitle="Scan a receipt, then pick Save as: Split bill to share it with friends."
+          subtitle="Scan a receipt, then pick Save as: Split bill to share it with friends. Bills friends split with you show up here too."
           actionLabel="Scan a receipt"
           onAction={() => router.navigate({ pathname: '/add', params: { start: 'camera', at: String(Date.now()) } })}
         />
       ) : (
         <>
-          <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>Friends owe you</Text>
-            <Text style={styles.summaryValue}>{money(owed)}</Text>
-            <Text style={styles.summaryHint}>{open.length === 0 ? 'All paid back. Nice.' : `${open.length} ${open.length === 1 ? 'bill' : 'bills'} still open`}</Text>
-          </View>
-          {open.length > 0 ? <SplitList splits={open} /> : null}
+          {mine.length > 0 ? (
+            <View style={styles.summary}>
+              <Text style={styles.summaryLabel}>Friends owe you</Text>
+              <Text style={styles.summaryValue}>{money(owed)}</Text>
+              <Text style={styles.summaryHint}>{open.length === 0 ? 'All paid back. Nice.' : `${open.length} ${open.length === 1 ? 'bill' : 'bills'} still open`}</Text>
+            </View>
+          ) : null}
+          {shared.length > 0 ? (
+            <>
+              <Text style={styles.sectionLabel}>Shared with you{iOwe > 0 ? ` · you owe ${money(iOwe)}` : ''}</Text>
+              <SharedList bills={shared} />
+            </>
+          ) : null}
+          {open.length > 0 ? (
+            <>
+              {shared.length > 0 ? <Text style={styles.sectionLabel}>You paid</Text> : null}
+              <SplitList splits={open} />
+            </>
+          ) : null}
           {done.length > 0 ? (
             <>
               <Text style={styles.sectionLabel}>Settled</Text>
@@ -74,6 +96,44 @@ export default function Splits() {
         </>
       )}
     </Screen>
+  )
+}
+
+/** Bills someone else paid with you on them. */
+function SharedList({ bills }: { bills: SharedBill[] }) {
+  const Colors = useColors()
+  const styles = useStyles()
+  return (
+    <View style={styles.card}>
+      {bills.map((b, i) => {
+        const owes = b.status === 'owes'
+        const payer = b.owner.username ? `@${b.owner.username}` : b.owner.name
+        return (
+          <Pressable
+            key={b.id}
+            onPress={() => router.push({ pathname: '/splits/shared/[id]', params: { id: String(b.id) } })}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.row, i < bills.length - 1 && styles.divider, { opacity: pressed ? 0.55 : 1 }]}
+          >
+            <View style={[styles.rowIcon, owes ? { backgroundColor: Colors.expenseSoft } : { backgroundColor: Colors.incomeSoft }]}>
+              <Icon name={owes ? 'receipt' : 'check'} size={20} color={owes ? Colors.expense : Colors.income} />
+            </View>
+            <View style={styles.rowText}>
+              <Text style={styles.rowTitle} numberOfLines={1}>
+                {b.title}
+              </Text>
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {dayLabel(b.split_date)} · {payer} paid{owes ? ', you owe them' : b.status === 'settled' ? ', you paid back' : ''}
+              </Text>
+            </View>
+            <View style={styles.rowRight}>
+              <Text style={[styles.rowAmount, owes && { color: Colors.expense }]}>{money(owes ? b.remaining : b.share)}</Text>
+              <Text style={styles.rowAmountHint}>{owes ? 'you owe' : 'your share'}</Text>
+            </View>
+          </Pressable>
+        )
+      })}
+    </View>
   )
 }
 

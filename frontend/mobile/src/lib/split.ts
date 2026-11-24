@@ -9,6 +9,8 @@ export interface BillPerson {
   me?: boolean
   /** A saved friend; null for a guest (just a name on this bill) or someone saved on the way. */
   friendId: number | null
+  /** A DROIN account (picked by @username): the bill shows up in their app too. */
+  username?: string | null
   /** Add to friends when saving (new names only). */
   save: boolean
 }

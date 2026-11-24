@@ -9,9 +9,12 @@ import { useAuth } from '@/lib/auth'
 // Everything behind the bottom menu needs an account; logged-out users go to /login.
 export default function TabsLayout() {
   const Colors = useColors()
-  const { isLoading, isAuthenticated } = useAuth()
+  const { isLoading, isAuthenticated, user } = useAuth()
   if (isLoading) return <LoadingState label="Opening the drawer…" />
   if (!isAuthenticated) return <Redirect href="/login" />
+  // Accounts from before usernames pick one first (null from the server; undefined is just an old
+  // cached profile while offline, which shouldn't lock anyone out).
+  if (user?.username === null) return <Redirect href={{ pathname: '/profile', params: { required: '1' } }} />
 
   return (
     <Tabs

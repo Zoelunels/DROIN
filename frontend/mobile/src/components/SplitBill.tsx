@@ -8,8 +8,9 @@ import { card, Fonts, makeStyles, useColors, type Palette } from '@/constants/co
 import { api } from '@/lib/api'
 import { money } from '@/lib/display'
 import { computeShares, initialOf, newPersonKey, type BillPerson, type BillState } from '@/lib/split'
+import { cleanUsername } from '@/lib/username'
 import type { EditableItem } from '@/components/ReceiptBreakdown'
-import type { Friend } from '@/types/api'
+import type { Friend, UserMatch } from '@/types/api'
 
 /** Each person's colour: you in orange, everyone else from a small set that works in light and dark. */
 export function personLook(Colors: Palette, index: number, me?: boolean) {
@@ -24,8 +25,8 @@ export function personLook(Colors: Palette, index: number, me?: boolean) {
 }
 
 /**
- * Split the scanned bill: add friends (saved) or guests (just a name), then tap each person's circle
- * on what they had. Shares update as you go: items split between whoever had them, tax and service
+ * Split the scanned bill: add friends (saved), friends on DROIN by @username (they see the bill in
+ * their app), or guests (just a name), then tap each person's circle on what they had. Shares update as you go: items split between whoever had them, tax and service
  * spread in proportion.
  */
 export function SplitBill({
@@ -55,6 +56,25 @@ export function SplitBill({
     api.get<Friend[]>(Endpoints.friends).then(setFriends).catch(() => {})
   }, [])
 
+  // Typing "@bu" looks up DROIN accounts. Results are kept with the text they answer, so a slow
+  // reply for an older text never shows up under a newer one.
+  const mention = name.trim().startsWith('@') ? cleanUsername(name) : null
+  const [found, setFound] = useState<{ q: string; users: UserMatch[]; failed?: boolean }>({ q: '', users: [] })
+  useEffect(() => {
+    if (mention === null || mention.length < 2) return
+    let live = true
+    const timer = setTimeout(() => {
+      api
+        .get<UserMatch[]>(`${Endpoints.users}?search=${encodeURIComponent(mention)}`)
+        .then((users) => live && setFound({ q: mention, users }))
+        .catch(() => live && setFound({ q: mention, users: [], failed: true }))
+    }, 250)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [mention])
+
   const shares = useMemo(() => computeShares(total, items, bill), [total, items, bill])
   const itemsSum = items.reduce((s, i) => s + (Number(i.amountText) || 0), 0)
   const extra = total - itemsSum
@@ -64,9 +84,29 @@ export function SplitBill({
   }
 
   const taken = new Set(bill.people.map((p) => p.name.trim().toLowerCase()))
+  const takenUsers = new Set(bill.people.map((p) => p.username).filter(Boolean))
   const query = name.trim().toLowerCase()
-  const suggestions = friends.filter((f) => !taken.has(f.name.toLowerCase()) && (!query || f.name.toLowerCase().includes(query))).slice(0, 8)
-  const exists = query !== '' && taken.has(query)
+  const suggestions =
+    mention !== null
+      ? []
+      : friends
+          .filter((f) => !taken.has(f.name.toLowerCase()) && !(f.username && takenUsers.has(f.username)) && (!query || f.name.toLowerCase().includes(query)))
+          .slice(0, 8)
+  const matches = mention !== null && found.q === mention ? found.users.filter((u) => !takenUsers.has(u.username)) : []
+  const searching = mention !== null && mention.length >= 2 && found.q !== mention
+  const exists = mention !== null ? takenUsers.has(mention) : query !== '' && taken.has(query)
+  const mentionHint =
+    mention === null
+      ? undefined
+      : mention.length < 2
+        ? 'Keep typing their username'
+        : searching
+          ? 'Looking…'
+          : found.failed
+            ? "Can't search right now"
+            : matches.length === 0 && !exists
+              ? `No one on DROIN is @${mention}`
+              : undefined
 
   function addPerson(person: Omit<BillPerson, 'key'>) {
     onChange({ ...bill, people: [...bill.people, { ...person, key: newPersonKey() }] })
@@ -74,11 +114,21 @@ export function SplitBill({
     setAdding(false)
   }
 
+  function addUser(u: UserMatch) {
+    const friend = friends.find((f) => f.username === u.username)
+    addPerson({ name: friend?.name ?? u.name, friendId: friend?.id ?? null, username: u.username, save: false })
+  }
+
   function addTyped() {
+    if (mention !== null) {
+      const exact = matches.find((u) => u.username === mention)
+      if (exact) addUser(exact)
+      return
+    }
     const clean = name.trim().slice(0, 60)
     if (!clean || exists) return
     const friend = friends.find((f) => f.name.toLowerCase() === clean.toLowerCase())
-    addPerson(friend ? { name: friend.name, friendId: friend.id, save: false } : { name: clean, friendId: null, save })
+    addPerson(friend ? { name: friend.name, friendId: friend.id, username: friend.username, save: false } : { name: clean, friendId: null, save })
   }
 
   function removePerson(key: string) {
@@ -110,7 +160,13 @@ export function SplitBill({
               <Text style={[styles.personName, { color: look.fg }]} numberOfLines={1}>
                 {p.me ? 'You' : p.name}
               </Text>
-              {!p.me && !p.friendId && !p.save ? <Text style={[styles.guest, { color: look.fg }]}>guest</Text> : null}
+              {!p.me && p.username ? (
+                <Text style={[styles.guest, { color: look.fg }]} numberOfLines={1}>
+                  @{p.username}
+                </Text>
+              ) : !p.me && !p.friendId && !p.save ? (
+                <Text style={[styles.guest, { color: look.fg }]}>guest</Text>
+              ) : null}
               {!p.me ? (
                 <Pressable
                   onPress={() => removePerson(p.key)}
@@ -138,29 +194,54 @@ export function SplitBill({
           <Input
             value={name}
             onChangeText={setName}
-            placeholder="Name, e.g. Budi"
+            placeholder="Name, or @username"
             autoFocus
-            autoCapitalize="words"
+            autoCapitalize={mention !== null ? 'none' : 'words'}
+            autoCorrect={mention === null}
             returnKeyType="done"
             onSubmitEditing={addTyped}
             error={exists ? 'Already in this split' : undefined}
+            hint={exists ? undefined : (mentionHint ?? (name === '' ? "Type @ to find a friend on DROIN: they'll see the bill too." : undefined))}
           />
+          {matches.length > 0 ? (
+            <View style={styles.suggestions}>
+              {matches.map((u) => (
+                <Pressable
+                  key={u.username}
+                  onPress={() => addUser(u)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add ${u.name}, @${u.username}`}
+                  style={({ pressed }) => [styles.suggestion, pressed && { backgroundColor: Colors.orangeSoft }]}
+                >
+                  <Icon name="user" size={13} color={Colors.inkSoft} />
+                  <Text style={styles.suggestionText} numberOfLines={1}>
+                    {u.name}
+                  </Text>
+                  <Text style={styles.suggestionHandle} numberOfLines={1}>
+                    @{u.username}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           {suggestions.length > 0 ? (
             <View style={styles.suggestions}>
               {suggestions.map((f) => (
                 <Pressable
                   key={f.id}
-                  onPress={() => addPerson({ name: f.name, friendId: f.id, save: false })}
+                  onPress={() => addPerson({ name: f.name, friendId: f.id, username: f.username, save: false })}
                   accessibilityRole="button"
                   accessibilityLabel={`Add ${f.name}`}
                   style={({ pressed }) => [styles.suggestion, pressed && { backgroundColor: Colors.orangeSoft }]}
                 >
                   <Icon name="user" size={13} color={Colors.inkSoft} />
                   <Text style={styles.suggestionText}>{f.name}</Text>
+                  {f.username ? <Text style={styles.suggestionHandle}>@{f.username}</Text> : null}
                 </Pressable>
               ))}
             </View>
           ) : null}
+          {mention === null ? (
           <View style={styles.saveRow}>
             <View style={styles.flex}>
               <Text style={styles.saveTitle}>Save to friends</Text>
@@ -174,9 +255,10 @@ export function SplitBill({
               accessibilityLabel="Save to friends"
             />
           </View>
+          ) : null}
           <View style={styles.addButtons}>
             <Button variant="ghost" size="sm" label="Cancel" onPress={() => { setAdding(false); setName('') }} />
-            <Button size="sm" label="Add" onPress={addTyped} disabled={!name.trim() || exists} />
+            <Button size="sm" label="Add" onPress={addTyped} disabled={mention !== null ? !matches.some((u) => u.username === mention) : !name.trim() || exists} />
           </View>
         </View>
       ) : null}
@@ -255,7 +337,7 @@ export function SplitBill({
                 <Text style={styles.shareName} numberOfLines={1}>
                   {p.me ? 'You' : p.name}
                 </Text>
-                <Text style={styles.shareHint}>{p.me ? 'Your expense' : 'Owes you'}</Text>
+                <Text style={styles.shareHint}>{p.me ? 'Your expense' : p.username ? 'Owes you · sees it in their app' : 'Owes you'}</Text>
               </View>
               <Text style={[styles.shareAmount, !p.me && { color: Colors.income }]}>{money(shares[p.key] ?? 0)}</Text>
             </View>
@@ -282,7 +364,7 @@ const useStyles = makeStyles((Colors) => ({
   people: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   person: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingLeft: 12, paddingRight: 10, borderRadius: 17, borderWidth: 1.5 },
   personName: { maxWidth: 120, fontSize: 14, fontFamily: Fonts.extrabold },
-  guest: { fontSize: 11, fontFamily: Fonts.bold, opacity: 0.8 },
+  guest: { maxWidth: 90, fontSize: 11, fontFamily: Fonts.bold, opacity: 0.8 },
   personRemove: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
   addPerson: {
     flexDirection: 'row',
@@ -299,7 +381,8 @@ const useStyles = makeStyles((Colors) => ({
   addPanel: { gap: 10, padding: 12, borderRadius: 16, backgroundColor: Colors.cream },
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   suggestion: { flexDirection: 'row', alignItems: 'center', gap: 5, height: 30, paddingHorizontal: 10, borderRadius: 10, backgroundColor: Colors.surface },
-  suggestionText: { fontSize: 13, fontFamily: Fonts.bold, color: Colors.inkSoft },
+  suggestionText: { maxWidth: 140, fontSize: 13, fontFamily: Fonts.bold, color: Colors.inkSoft },
+  suggestionHandle: { maxWidth: 120, fontSize: 12, fontFamily: Fonts.semibold, color: Colors.secondaryGray },
   saveRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   saveTitle: { fontSize: 14, fontFamily: Fonts.extrabold, color: Colors.charcoal },
   saveHint: { fontSize: 12, fontFamily: Fonts.semibold, color: Colors.secondaryGray },

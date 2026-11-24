@@ -1,8 +1,8 @@
 import Constants from 'expo-constants'
 
 // Which backend the app talks to, first match wins:
-//   1. EXPO_PUBLIC_API_URL: set per build in eas.json (the real server), or in .env.local to point
-//      Expo Go at a server (e.g. http://43.156.49.172:3000). Baked in when the app is bundled.
+//   1. EXPO_PUBLIC_API_URL: set per build in eas.json / .env.production (the real server), or in
+//      .env.development.local to point Expo Go at it. Baked in when the app is bundled.
 //   2. expo.extra.apiUrl in app.json.
 //   3. In Expo Go the phone loads the bundle from your computer (hostUri = "192.168.x.x:8081"), so
 //      by default the backend is on that same machine at port 3000.
@@ -17,11 +17,11 @@ export const API_BASE_URL: string = (
 
 export const Endpoints = {
   health: '/health',
-  register: '/auth/register',
-  login: '/auth/login',
+  authCode: '/auth/code',
+  authVerify: '/auth/verify',
   logout: '/auth/logout',
   me: '/auth/me',
-  password: '/auth/password',
+  users: '/users',
   wallets: '/wallets',
   categories: '/categories',
   transactions: '/transactions',
@@ -34,6 +34,7 @@ export const Endpoints = {
   debts: '/debts',
   debtsSummary: '/debts/summary',
   splits: '/splits',
+  splitsShared: '/splits/shared',
   friends: '/friends',
   tags: '/tags',
   insights: '/insights',

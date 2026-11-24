@@ -1,5 +1,11 @@
-# DROIN monorepo: backend/ (Bun + Hono) and frontend/ (Expo app, promo animation, brand assets).
-# backend/.gitignore and frontend/mobile/.gitignore add their own rules on top of these.
+# DROIN: the Expo app, promo animation and brand assets (frontend/). frontend/mobile/.gitignore adds its
+# own rules on top of these.
+
+# Kept out of this (public) repo: the backend and its server setup live in a private repo of their own,
+# and .claude/ is Claude Code's local settings for this machine.
+backend/
+deploy/
+.claude/
 
 # Dependencies
 node_modules/
@@ -8,21 +14,12 @@ node_modules/
 .env
 .env.*
 !.env.example
-.claude/settings.local.json
 
-# Local-only notes, e.g. backend/DEV_ACCOUNTS.local.md (test logins for the dev database)
+# Local-only notes
 *.local.md
 
 # Backup of frontend/mobile's old standalone .git (from before the monorepo); safe to delete
 .backup/
-
-# Backend runtime data (receipt uploads, see UPLOAD_DIR; OCR language files, see TESSDATA_DIR)
-backend/uploads/
-backend/uploads-test/
-backend/.tessdata/
-backend/ocr-service/.venv/
-backend/ocr-service/.pip-cache/
-__pycache__/
 
 # Logs (backend-dev.log, frontend-dev.log, …)
 *.log
@@ -45,5 +42,5 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 
-# Deploy archive made for scp to the server (deploy/DEPLOY.md, step 1)
+# Deploy archive made for scp to the server
 *.tgz

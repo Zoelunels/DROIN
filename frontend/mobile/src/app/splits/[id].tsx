@@ -118,11 +118,14 @@ export default function SplitDetail() {
                     <Text style={styles.personName} numberOfLines={1}>
                       {p.is_me ? 'You' : p.name}
                     </Text>
-                    <Text style={styles.personHint}>
+                    <Text style={styles.personHint} numberOfLines={1}>
+                      {p.username && p.status !== 'me' ? `@${p.username} · ` : ''}
                       {p.status === 'me'
                         ? 'Your share, in your spending'
                         : p.status === 'settled'
-                          ? 'Paid you back'
+                          ? p.paid_marked_at
+                            ? 'Marked paid in their app'
+                            : 'Paid you back'
                           : p.status === 'removed'
                             ? 'Their debt was deleted'
                             : p.remaining < p.share
@@ -164,6 +167,7 @@ export default function SplitDetail() {
 
           <Text style={styles.footnote}>
             Paid back puts their share back into {split.wallet_name}.
+            {split.people.some((p) => p.username && !p.is_me) ? ' Friends with a username see this bill in their app and can mark it paid themselves.' : ''}
           </Text>
 
           <Button

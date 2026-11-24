@@ -19,22 +19,35 @@
 //
 // 3. One CPU architecture (arm64-v8a, every recent Android phone) instead of four, so the build is
 //    about four times lighter.
-const { withGradleProperties, withProjectBuildGradle } = require('expo/config-plugins')
+const { withAppBuildGradle, withGradleProperties, withProjectBuildGradle } = require('expo/config-plugins')
 
 const BEGIN = '// droin: local Windows build settings'
 const END = '// droin: end'
 
 const CMAKE_ARGS = ['-DCMAKE_JOB_POOLS=droin=2', '-DCMAKE_JOB_POOL_COMPILE=droin', '-DCMAKE_JOB_POOL_LINK=droin']
 
-const BLOCK = `${BEGIN}
+const ARGS = CMAKE_ARGS.map((a) => `"${a}"`).join(', ')
+
+// Root build.gradle: the native libraries. The app module is configured by Expo's root plugin
+// before this file finishes, so its settings go in app/build.gradle instead (setting them from
+// here fails with "It is too late to set buildStagingDirectory").
+const ROOT_BLOCK = `${BEGIN}
 subprojects { p ->
-  def localBuildArgs = {
-    p.android.defaultConfig.externalNativeBuild.cmake.arguments(${CMAKE_ARGS.map((a) => `"${a}"`).join(', ')})
+  p.plugins.withId("com.android.library") {
+    p.android.defaultConfig.externalNativeBuild.cmake.arguments(${ARGS})
   }
-  p.plugins.withId("com.android.library") { localBuildArgs() }
-  p.plugins.withId("com.android.application") {
-    localBuildArgs()
-    p.android.externalNativeBuild.cmake.buildStagingDirectory = new File(p.rootDir, ".cxx")
+}
+${END}`
+
+const APP_BLOCK = `${BEGIN}
+android {
+  defaultConfig {
+    externalNativeBuild {
+      cmake { arguments(${ARGS}) }
+    }
+  }
+  externalNativeBuild {
+    cmake { buildStagingDirectory = new File(rootDir, ".cxx") }
   }
 }
 ${END}`
@@ -50,15 +63,20 @@ const GRADLE_PROPERTIES = {
 const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const EXISTING_BLOCK = new RegExp(`\\n*${escape(BEGIN)}[\\s\\S]*?(${escape(END)}|$)`)
 
+const appendBlock = (file, block) => (cfg) => {
+  if (cfg.modResults.language !== 'groovy') {
+    throw new Error(`withLocalAndroidBuild: expected ${file} to be Groovy`)
+  }
+  const base = cfg.modResults.contents.replace(EXISTING_BLOCK, '').trimEnd()
+  cfg.modResults.contents = `${base}\n\n${block}\n`
+  return cfg
+}
+
 const withBuildGradle = (config) =>
-  withProjectBuildGradle(config, (cfg) => {
-    if (cfg.modResults.language !== 'groovy') {
-      throw new Error('withLocalAndroidBuild: expected android/build.gradle to be Groovy')
-    }
-    const base = cfg.modResults.contents.replace(EXISTING_BLOCK, '').trimEnd()
-    cfg.modResults.contents = `${base}\n\n${BLOCK}\n`
-    return cfg
-  })
+  withAppBuildGradle(
+    withProjectBuildGradle(config, appendBlock('android/build.gradle', ROOT_BLOCK)),
+    appendBlock('android/app/build.gradle', APP_BLOCK),
+  )
 
 const withBuildProperties = (config) =>
   withGradleProperties(config, (cfg) => {

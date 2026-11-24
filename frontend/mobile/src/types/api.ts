@@ -9,6 +9,8 @@ export type Frequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 export interface User {
   id: number
   email: string
+  /** @username; null for accounts made before usernames, until they pick one. */
+  username: string | null
   name: string
   timezone: string
   reminder_enabled: boolean
@@ -19,6 +21,16 @@ export interface User {
 export interface AuthResponse {
   user: User
   token: string
+}
+
+/** POST /auth/verify: signed in, or (a new email) the code is right but the account needs a name and username. */
+export type VerifyResponse = AuthResponse | { new_user: true }
+
+/** GET /users?search= — someone on DROIN, for @-mentions. */
+export interface UserMatch {
+  username: string
+  name: string
+  is_friend: boolean
 }
 
 export interface Wallet {
@@ -142,6 +154,8 @@ export interface DailyReport {
 export interface Friend {
   id: number
   name: string
+  /** Set when the friend is a DROIN account: bills split with them show up in their app. */
+  username: string | null
   owes_you: number
   created_at: string
 }
@@ -153,10 +167,14 @@ export interface SplitPerson {
   name: string
   is_me: boolean
   friend_id: number | null
+  /** They have an account: they see this bill and can mark it paid themselves. */
+  username: string | null
   share: number
   debt_id: number | null
   remaining: number
   status: 'me' | 'owes' | 'settled' | 'removed'
+  /** When they marked it paid from their own app. */
+  paid_marked_at: string | null
 }
 
 /** GET /splits/:id — a receipt you paid and shared. */
@@ -176,6 +194,28 @@ export interface Split {
   my_share: number
   owed_to_me: number
   settled: boolean
+}
+
+/** GET /splits/shared — a bill someone else paid and split with you. `id` is your place on it. */
+export interface SharedBill {
+  id: number
+  split_id: number
+  position: number
+  title: string
+  total: number
+  split_date: string
+  items: { name: string; amount: number; people: number[] }[]
+  owner: { name: string; username: string | null }
+  share: number
+  remaining: number
+  status: 'owes' | 'settled' | 'removed'
+  paid_marked_at: string | null
+  paid_transaction_id: number | null
+}
+
+/** GET /splits/shared/:id — with everyone on the bill. */
+export interface SharedBillDetail extends SharedBill {
+  people: { position: number; name: string; share: number; is_payer: boolean; username: string | null }[]
 }
 
 export interface Debt {

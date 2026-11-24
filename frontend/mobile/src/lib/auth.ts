@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { ApiError, api, setToken, clearToken, getToken, getCachedUser, setCachedUser, setUnauthorizedHandler } from './api'
 import { Endpoints } from '@/constants/api'
-import type { User, AuthResponse } from '@/types/api'
+import type { User, VerifyResponse } from '@/types/api'
 
 interface AuthState {
   user: User | null
@@ -9,11 +9,20 @@ interface AuthState {
   isAuthenticated: boolean
 }
 
+export type VerifyResult = 'signed-in' | 'new-user'
+
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name: string) => Promise<void>
+  /** Emails a 6-digit sign-in code. No passwords: owning the inbox is the login. */
+  requestCode: (email: string) => Promise<void>
+  /**
+   * Signs in with the code. A new email returns 'new-user' (the code stays valid): ask for a name
+   * and username, then call again with them to make the account.
+   */
+  verifyCode: (email: string, code: string, profile?: { name: string; username: string }) => Promise<VerifyResult>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  /** After the profile is changed (PUT /auth/me). */
+  setUser: (user: User) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -67,22 +76,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setUnauthorizedHandler(null)
   }, [])
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const data = await api.post<AuthResponse>(Endpoints.login, { email, password })
+  const requestCode = useCallback(async (email: string) => {
+    await api.post(Endpoints.authCode, { email })
+  }, [])
+
+  const verifyCode = useCallback(
+    async (email: string, code: string, profile?: { name: string; username: string }): Promise<VerifyResult> => {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      const data = await api.post<VerifyResponse>(Endpoints.authVerify, { email, code, ...(profile ? { ...profile, timezone } : {}) })
+      if ('new_user' in data) return 'new-user'
       await signedIn(data.token, data.user)
+      return 'signed-in'
     },
     [signedIn],
   )
 
-  const register = useCallback(
-    async (email: string, password: string, name: string) => {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
-      const data = await api.post<AuthResponse>(Endpoints.register, { email, password, name, timezone })
-      await signedIn(data.token, data.user)
-    },
-    [signedIn],
-  )
+  const setUser = useCallback(async (user: User) => {
+    await setCachedUser(user)
+    setState({ user, isLoading: false, isAuthenticated: true })
+  }, [])
 
   const logout = useCallback(async () => {
     try {
@@ -92,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState(LOGGED_OUT)
   }, [])
 
-  const value = { ...state, login, register, logout, refreshUser }
+  const value = { ...state, requestCode, verifyCode, logout, refreshUser, setUser }
 
   return React.createElement(AuthContext.Provider, { value }, children)
 }
