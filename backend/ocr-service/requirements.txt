@@ -1,3 +1,0 @@
-# PaddleOCR's PP-OCR models, run on ONNX Runtime (no PaddlePaddle install needed).
-rapidocr>=3,<4
-onnxruntime>=1.18

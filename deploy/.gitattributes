@@ -1,4 +1,0 @@
-*.sh text eol=lf
-*.service text eol=lf
-Caddyfile text eol=lf
-env.production.example text eol=lf
