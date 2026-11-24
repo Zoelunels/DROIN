@@ -1,10 +1,9 @@
 # DROIN: the Expo app, promo animation and brand assets (frontend/). frontend/mobile/.gitignore adds its
 # own rules on top of these.
 
-# Kept out of this (public) repo: the backend and its server setup live in a private repo of their own,
-# and .claude/ is Claude Code's local settings for this machine.
+# Kept out of this (public) repo: the backend (with its server setup in backend/deploy/) is a private repo
+# of its own, and .claude/ is Claude Code's local settings for this machine.
 backend/
-deploy/
 .claude/
 
 # Dependencies
